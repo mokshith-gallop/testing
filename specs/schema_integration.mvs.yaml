@@ -1,0 +1,622 @@
+# schema_integration.mvs.yaml — Cross-dataset FK/PK + Queryability
+# AC5: FK/PK type consistency across all 3 datasets
+# AC6: Queryability smoke tests (SELECT * + cross-dataset joins)
+# AC7/AC8: Integrity guards + live-only execution
+
+name: schema_integration
+
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+migration:
+  steps:
+    - { kind: ddl, sql: sql/ddl/02-staging-sqoop-mirrors.sql }
+    - { kind: ddl, sql: sql/ddl/03-staging-delta-feeds.sql }
+    - { kind: ddl, sql: sql/ddl/04-staging-file-feeds.sql }
+    - { kind: ddl, sql: sql/ddl/05-ods-cleanse.sql }
+    - { kind: ddl, sql: sql/ddl/06-ods-delta-scd2.sql }
+    - { kind: ddl, sql: sql/ddl/07-ods-acid.sql }
+    - { kind: ddl, sql: sql/ddl/08-dm-tables.sql }
+
+suites:
+  # ── AC5: Cross-dataset FK/PK type consistency ──
+  # Asserts every FK column joining across datasets has identical BigQuery type.
+  - pattern: schema_conformance
+    id: fk-pk-consistency
+    target_dataset: "${BUILD_DATASET}"
+    tables:
+        - table: agg_agent_daily
+          columns:
+            - {name: agent_sk, type: INT64}
+        - table: agg_agent_weekly
+          columns:
+            - {name: agent_sk, type: INT64}
+        - table: agg_billing_monthly
+          columns:
+            - {name: client_sk, type: INT64}
+            - {name: program_sk, type: INT64}
+        - table: agg_csat_rollup_monthly
+          columns:
+            - {name: client_sk, type: INT64}
+            - {name: program_sk, type: INT64}
+        - table: agg_program_monthly
+          columns:
+            - {name: client_sk, type: INT64}
+            - {name: program_sk, type: INT64}
+        - table: agg_queue_hourly
+          columns:
+            - {name: queue_sk, type: INT64}
+        - table: dim_agent
+          columns:
+            - {name: agent_id, type: INT64}
+            - {name: agent_sk, type: INT64}
+        - table: dim_client
+          columns:
+            - {name: client_id, type: INT64}
+            - {name: client_sk, type: INT64}
+        - table: dim_disposition
+          columns:
+            - {name: disposition_code, type: STRING}
+            - {name: disposition_sk, type: INT64}
+        - table: dim_program
+          columns:
+            - {name: client_id, type: INT64}
+            - {name: program_id, type: INT64}
+            - {name: program_sk, type: INT64}
+        - table: dim_queue
+          columns:
+            - {name: program_id, type: INT64}
+            - {name: queue_id, type: INT64}
+            - {name: queue_sk, type: INT64}
+        - table: dim_shift
+          columns:
+            - {name: shift_id, type: INT64}
+        - table: fact_adherence_daily
+          columns:
+            - {name: agent_sk, type: INT64}
+        - table: fact_agent_activity
+          columns:
+            - {name: agent_sk, type: INT64}
+        - table: fact_billing_line
+          columns:
+            - {name: client_sk, type: INT64}
+            - {name: invoice_id, type: INT64}
+            - {name: program_sk, type: INT64}
+        - table: fact_csat_survey
+          columns:
+            - {name: agent_sk, type: INT64}
+            - {name: client_sk, type: INT64}
+            - {name: interaction_id, type: STRING}
+            - {name: program_sk, type: INT64}
+        - table: fact_interaction
+          columns:
+            - {name: agent_sk, type: INT64}
+            - {name: client_sk, type: INT64}
+            - {name: interaction_id, type: STRING}
+            - {name: program_sk, type: INT64}
+            - {name: queue_sk, type: INT64}
+        - table: fact_qa_evaluation
+          columns:
+            - {name: agent_sk, type: INT64}
+            - {name: interaction_id, type: STRING}
+            - {name: program_sk, type: INT64}
+        - table: fact_queue_interval
+          columns:
+            - {name: queue_sk, type: INT64}
+        - table: fact_ticket
+          columns:
+            - {name: assigned_agent_sk, type: INT64}
+            - {name: program_sk, type: INT64}
+            - {name: ticket_id, type: INT64}
+        - table: ods_adherence_event
+          columns:
+            - {name: agent_id, type: INT64}
+        - table: ods_agent_acid
+          columns:
+            - {name: agent_id, type: INT64}
+        - table: ods_agent_assignment_scd2
+          columns:
+            - {name: agent_id, type: INT64}
+            - {name: program_id, type: INT64}
+            - {name: queue_id, type: INT64}
+        - table: ods_agent_scd2
+          columns:
+            - {name: agent_id, type: INT64}
+        - table: ods_agent_skill_scd2
+          columns:
+            - {name: agent_id, type: INT64}
+        - table: ods_attrition_event
+          columns:
+            - {name: agent_id, type: INT64}
+        - table: ods_call
+          columns:
+            - {name: agent_id, type: INT64}
+            - {name: disposition_code, type: STRING}
+            - {name: program_id, type: INT64}
+            - {name: queue_id, type: INT64}
+        - table: ods_callback_request
+          columns:
+            - {name: queue_id, type: INT64}
+        - table: ods_client_acid
+          columns:
+            - {name: client_id, type: INT64}
+        - table: ods_contract
+          columns:
+            - {name: client_id, type: INT64}
+            - {name: contract_id, type: INT64}
+            - {name: program_id, type: INT64}
+        - table: ods_contract_line
+          columns:
+            - {name: contract_id, type: INT64}
+        - table: ods_dialer_attempt
+          columns:
+            - {name: agent_id, type: INT64}
+        - table: ods_interaction
+          columns:
+            - {name: agent_id, type: INT64}
+            - {name: interaction_id, type: STRING}
+            - {name: program_id, type: INT64}
+            - {name: queue_id, type: INT64}
+        - table: ods_invoice_acid
+          columns:
+            - {name: client_id, type: INT64}
+            - {name: invoice_id, type: INT64}
+            - {name: program_id, type: INT64}
+        - table: ods_payroll_adjustment
+          columns:
+            - {name: agent_id, type: INT64}
+        - table: ods_program
+          columns:
+            - {name: client_id, type: INT64}
+            - {name: program_id, type: INT64}
+        - table: ods_queue
+          columns:
+            - {name: program_id, type: INT64}
+            - {name: queue_id, type: INT64}
+        - table: ods_rate_card
+          columns:
+            - {name: program_id, type: INT64}
+        - table: ods_schedule
+          columns:
+            - {name: agent_id, type: INT64}
+            - {name: shift_id, type: INT64}
+        - table: ods_sla_credit
+          columns:
+            - {name: program_id, type: INT64}
+        - table: ods_ticket_acid
+          columns:
+            - {name: program_id, type: INT64}
+            - {name: ticket_id, type: INT64}
+        - table: ods_ticket_worklog
+          columns:
+            - {name: agent_id, type: INT64}
+            - {name: ticket_id, type: INT64}
+        - table: ods_timesheet
+          columns:
+            - {name: agent_id, type: INT64}
+            - {name: program_id, type: INT64}
+        - table: stg_crm_client
+          columns:
+            - {name: client_id, type: INT64}
+        - table: stg_crm_client_contact
+          columns:
+            - {name: client_id, type: INT64}
+        - table: stg_crm_contract
+          columns:
+            - {name: client_id, type: INT64}
+            - {name: contract_id, type: INT64}
+            - {name: program_id, type: INT64}
+        - table: stg_crm_contract_line
+          columns:
+            - {name: contract_id, type: INT64}
+        - table: stg_crm_program
+          columns:
+            - {name: client_id, type: INT64}
+            - {name: program_id, type: INT64}
+        - table: stg_crm_sla_credit_delta
+          columns:
+            - {name: program_id, type: INT64}
+        - table: stg_crm_sla_target
+          columns:
+            - {name: program_id, type: INT64}
+            - {name: queue_id, type: INT64}
+        - table: stg_file_dialer_result
+          columns:
+            - {name: agent_id, type: INT64}
+        - table: stg_fin_invoice
+          columns:
+            - {name: client_id, type: INT64}
+            - {name: invoice_id, type: INT64}
+            - {name: program_id, type: INT64}
+        - table: stg_fin_invoice_line
+          columns:
+            - {name: invoice_id, type: INT64}
+        - table: stg_fin_payroll_adj_delta
+          columns:
+            - {name: agent_id, type: INT64}
+        - table: stg_fin_rate_card
+          columns:
+            - {name: program_id, type: INT64}
+        - table: stg_fin_timesheet_delta
+          columns:
+            - {name: agent_id, type: INT64}
+            - {name: program_id, type: INT64}
+        - table: stg_hr_agent
+          columns:
+            - {name: agent_id, type: INT64}
+        - table: stg_hr_agent_skill
+          columns:
+            - {name: agent_id, type: INT64}
+        - table: stg_hr_attrition_event_delta
+          columns:
+            - {name: agent_id, type: INT64}
+        - table: stg_hr_employment_event
+          columns:
+            - {name: agent_id, type: INT64}
+        - table: stg_tel_agent_state_event
+          columns:
+            - {name: agent_id, type: INT64}
+        - table: stg_tel_call
+          columns:
+            - {name: agent_id, type: INT64}
+            - {name: disposition_code, type: STRING}
+            - {name: program_id, type: INT64}
+            - {name: queue_id, type: INT64}
+        - table: stg_tel_call_segment
+          columns:
+            - {name: agent_id, type: INT64}
+        - table: stg_tel_callback_request_delta
+          columns:
+            - {name: queue_id, type: INT64}
+        - table: stg_tel_disposition_code
+          columns:
+            - {name: disposition_code, type: STRING}
+        - table: stg_tel_queue
+          columns:
+            - {name: program_id, type: INT64}
+            - {name: queue_id, type: INT64}
+        - table: stg_tkt_ticket
+          columns:
+            - {name: program_id, type: INT64}
+            - {name: ticket_id, type: INT64}
+        - table: stg_tkt_ticket_event
+          columns:
+            - {name: ticket_id, type: INT64}
+        - table: stg_tkt_worklog_delta
+          columns:
+            - {name: agent_id, type: INT64}
+            - {name: ticket_id, type: INT64}
+        - table: stg_wfm_adherence_event
+          columns:
+            - {name: agent_id, type: INT64}
+        - table: stg_wfm_forecast
+          columns:
+            - {name: queue_id, type: INT64}
+        - table: stg_wfm_schedule
+          columns:
+            - {name: agent_id, type: INT64}
+            - {name: shift_id, type: INT64}
+        - table: stg_wfm_shift
+          columns:
+            - {name: shift_id, type: INT64}
+        - table: stg_wfm_timeoff_request
+          columns:
+            - {name: agent_id, type: INT64}
+
+  # ── AC6: Queryability smoke — SELECT * succeeds for every table ──
+  - pattern: query_performance
+    id: queryability-smoke
+    target_dataset: "${BUILD_DATASET}"
+    queries:
+      - id: select-stg_crm_client
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_crm_client LIMIT 0"
+      - id: select-stg_crm_client_contact
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_crm_client_contact LIMIT 0"
+      - id: select-stg_crm_program
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_crm_program LIMIT 0"
+      - id: select-stg_crm_contract
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_crm_contract LIMIT 0"
+      - id: select-stg_crm_contract_line
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_crm_contract_line LIMIT 0"
+      - id: select-stg_crm_sla_target
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_crm_sla_target LIMIT 0"
+      - id: select-stg_hr_agent
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_hr_agent LIMIT 0"
+      - id: select-stg_hr_org_unit
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_hr_org_unit LIMIT 0"
+      - id: select-stg_hr_employment_event
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_hr_employment_event LIMIT 0"
+      - id: select-stg_hr_skill
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_hr_skill LIMIT 0"
+      - id: select-stg_hr_agent_skill
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_hr_agent_skill LIMIT 0"
+      - id: select-stg_wfm_shift
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_wfm_shift LIMIT 0"
+      - id: select-stg_wfm_schedule
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_wfm_schedule LIMIT 0"
+      - id: select-stg_wfm_adherence_event
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_wfm_adherence_event LIMIT 0"
+      - id: select-stg_wfm_forecast
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_wfm_forecast LIMIT 0"
+      - id: select-stg_wfm_timeoff_request
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_wfm_timeoff_request LIMIT 0"
+      - id: select-stg_tel_call
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_tel_call LIMIT 0"
+      - id: select-stg_tel_call_segment
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_tel_call_segment LIMIT 0"
+      - id: select-stg_tel_queue
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_tel_queue LIMIT 0"
+      - id: select-stg_tel_agent_state_event
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_tel_agent_state_event LIMIT 0"
+      - id: select-stg_tel_disposition_code
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_tel_disposition_code LIMIT 0"
+      - id: select-stg_tkt_ticket
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_tkt_ticket LIMIT 0"
+      - id: select-stg_tkt_ticket_event
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_tkt_ticket_event LIMIT 0"
+      - id: select-stg_tkt_category
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_tkt_category LIMIT 0"
+      - id: select-stg_fin_invoice
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_fin_invoice LIMIT 0"
+      - id: select-stg_fin_invoice_line
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_fin_invoice_line LIMIT 0"
+      - id: select-stg_fin_rate_card
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_fin_rate_card LIMIT 0"
+      - id: select-stg_fin_timesheet_delta
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_fin_timesheet_delta LIMIT 0"
+      - id: select-stg_fin_payroll_adj_delta
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_fin_payroll_adj_delta LIMIT 0"
+      - id: select-stg_crm_sla_credit_delta
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_crm_sla_credit_delta LIMIT 0"
+      - id: select-stg_tel_callback_request_delta
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_tel_callback_request_delta LIMIT 0"
+      - id: select-stg_wfm_shift_swap_delta
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_wfm_shift_swap_delta LIMIT 0"
+      - id: select-stg_tkt_worklog_delta
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_tkt_worklog_delta LIMIT 0"
+      - id: select-stg_hr_attrition_event_delta
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_hr_attrition_event_delta LIMIT 0"
+      - id: select-stg_fin_rate_card_change_delta
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_fin_rate_card_change_delta LIMIT 0"
+      - id: select-stg_file_interaction_export
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_file_interaction_export LIMIT 0"
+      - id: select-stg_file_survey_csat
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_file_survey_csat LIMIT 0"
+      - id: select-stg_file_qa_forms
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_file_qa_forms LIMIT 0"
+      - id: select-stg_file_ivr_logs
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_file_ivr_logs LIMIT 0"
+      - id: select-stg_file_chat_transcripts
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_file_chat_transcripts LIMIT 0"
+      - id: select-stg_file_roster
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_file_roster LIMIT 0"
+      - id: select-stg_file_telco_invoice
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_file_telco_invoice LIMIT 0"
+      - id: select-stg_file_dialer_result
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_file_dialer_result LIMIT 0"
+      - id: select-stg_file_email_interaction
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_file_email_interaction LIMIT 0"
+      - id: select-stg_file_speech_analytics
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.stg_file_speech_analytics LIMIT 0"
+      - id: select-ods_program
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_program LIMIT 0"
+      - id: select-ods_contract
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_contract LIMIT 0"
+      - id: select-ods_contract_line
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_contract_line LIMIT 0"
+      - id: select-ods_org_unit
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_org_unit LIMIT 0"
+      - id: select-ods_queue
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_queue LIMIT 0"
+      - id: select-ods_schedule
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_schedule LIMIT 0"
+      - id: select-ods_adherence_event
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_adherence_event LIMIT 0"
+      - id: select-ods_call
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_call LIMIT 0"
+      - id: select-ods_ivr_session
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_ivr_session LIMIT 0"
+      - id: select-ods_chat_session
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_chat_session LIMIT 0"
+      - id: select-ods_email_interaction
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_email_interaction LIMIT 0"
+      - id: select-ods_survey_response
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_survey_response LIMIT 0"
+      - id: select-ods_qa_evaluation
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_qa_evaluation LIMIT 0"
+      - id: select-ods_interaction
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_interaction LIMIT 0"
+      - id: select-ods_dialer_attempt
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_dialer_attempt LIMIT 0"
+      - id: select-ods_timesheet
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_timesheet LIMIT 0"
+      - id: select-ods_payroll_adjustment
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_payroll_adjustment LIMIT 0"
+      - id: select-ods_sla_credit
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_sla_credit LIMIT 0"
+      - id: select-ods_callback_request
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_callback_request LIMIT 0"
+      - id: select-ods_shift_swap
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_shift_swap LIMIT 0"
+      - id: select-ods_ticket_worklog
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_ticket_worklog LIMIT 0"
+      - id: select-ods_attrition_event
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_attrition_event LIMIT 0"
+      - id: select-ods_rate_card
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_rate_card LIMIT 0"
+      - id: select-ods_agent_scd2
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_agent_scd2 LIMIT 0"
+      - id: select-ods_agent_skill_scd2
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_agent_skill_scd2 LIMIT 0"
+      - id: select-ods_agent_assignment_scd2
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_agent_assignment_scd2 LIMIT 0"
+      - id: select-ods_client_acid
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_client_acid LIMIT 0"
+      - id: select-ods_agent_acid
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_agent_acid LIMIT 0"
+      - id: select-ods_ticket_acid
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_ticket_acid LIMIT 0"
+      - id: select-ods_invoice_acid
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.ods_invoice_acid LIMIT 0"
+      - id: select-dim_date
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.dim_date LIMIT 0"
+      - id: select-dim_agent
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.dim_agent LIMIT 0"
+      - id: select-dim_client
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.dim_client LIMIT 0"
+      - id: select-dim_program
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.dim_program LIMIT 0"
+      - id: select-dim_queue
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.dim_queue LIMIT 0"
+      - id: select-dim_site
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.dim_site LIMIT 0"
+      - id: select-dim_shift
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.dim_shift LIMIT 0"
+      - id: select-dim_org
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.dim_org LIMIT 0"
+      - id: select-dim_disposition
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.dim_disposition LIMIT 0"
+      - id: select-fact_interaction
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.fact_interaction LIMIT 0"
+      - id: select-fact_agent_activity
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.fact_agent_activity LIMIT 0"
+      - id: select-fact_queue_interval
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.fact_queue_interval LIMIT 0"
+      - id: select-fact_csat_survey
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.fact_csat_survey LIMIT 0"
+      - id: select-fact_qa_evaluation
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.fact_qa_evaluation LIMIT 0"
+      - id: select-fact_billing_line
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.fact_billing_line LIMIT 0"
+      - id: select-fact_adherence_daily
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.fact_adherence_daily LIMIT 0"
+      - id: select-fact_ticket
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.fact_ticket LIMIT 0"
+      - id: select-fact_ivr_path
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.fact_ivr_path LIMIT 0"
+      - id: select-agg_agent_daily
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.agg_agent_daily LIMIT 0"
+      - id: select-agg_agent_weekly
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.agg_agent_weekly LIMIT 0"
+      - id: select-agg_program_monthly
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.agg_program_monthly LIMIT 0"
+      - id: select-agg_queue_hourly
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.agg_queue_hourly LIMIT 0"
+      - id: select-agg_csat_rollup_monthly
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.agg_csat_rollup_monthly LIMIT 0"
+      - id: select-agg_billing_monthly
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.agg_billing_monthly LIMIT 0"
+      - id: select-agg_site_daily
+        mode: measure
+        sql: "SELECT * FROM ${BUILD_DATASET}.agg_site_daily LIMIT 0"
+
+      # Cross-dataset representative queries
+      - id: join-staging-to-ods
+        mode: measure
+        sql: "SELECT s.invoice_id, a.invoice_no FROM ${BUILD_DATASET}.stg_fin_invoice s JOIN ${BUILD_DATASET}.ods_invoice_acid a ON a.invoice_id = s.invoice_id LIMIT 0"
+      - id: join-ods-to-dm
+        mode: measure
+        sql: "SELECT i.interaction_id, f.handle_seconds FROM ${BUILD_DATASET}.ods_interaction i JOIN ${BUILD_DATASET}.fact_interaction f ON f.interaction_id = i.interaction_id LIMIT 0"
+      - id: join-dm-fact-to-dim
+        mode: measure
+        sql: "SELECT f.interaction_id, a.full_name, p.program_name, q.queue_name FROM ${BUILD_DATASET}.fact_interaction f JOIN ${BUILD_DATASET}.dim_agent a ON a.agent_sk = f.agent_sk JOIN ${BUILD_DATASET}.dim_program p ON p.program_sk = f.program_sk JOIN ${BUILD_DATASET}.dim_queue q ON q.queue_sk = f.queue_sk LIMIT 0"
