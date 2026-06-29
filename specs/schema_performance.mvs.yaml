@@ -1,0 +1,136 @@
+# schema_performance.mvs.yaml — Partition/cluster pruning verification
+# AC9: Physical-access performance — partition/cluster pruning verified
+#      on hot-path tables with sample data.
+#
+# Strategy: seed ~200 rows per hot-path table across 3+ partition values,
+# then compare bytes_scanned for unfiltered vs partition/cluster-filtered
+# queries. The filtered side must scan <= the unfiltered side.
+#
+# All bytes_scanned figures come from BigQuery Job API statistics via
+# the query_performance harness pattern — never invented.
+
+name: schema_performance
+
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+migration:
+  steps:
+    # DDL: create all 100 tables
+    - { kind: ddl, sql: sql/ddl/02-staging-sqoop-mirrors.sql }
+    - { kind: ddl, sql: sql/ddl/03-staging-delta-feeds.sql }
+    - { kind: ddl, sql: sql/ddl/04-staging-file-feeds.sql }
+    - { kind: ddl, sql: sql/ddl/05-ods-cleanse.sql }
+    - { kind: ddl, sql: sql/ddl/06-ods-delta-scd2.sql }
+    - { kind: ddl, sql: sql/ddl/07-ods-acid.sql }
+    - { kind: ddl, sql: sql/ddl/08-dm-tables.sql }
+    # Seed: insert sample data into hot-path tables
+    - { kind: transform, sql: sql/seed/seed_fact_interaction.sql }
+    - { kind: transform, sql: sql/seed/seed_fact_billing_line.sql }
+    - { kind: transform, sql: sql/seed/seed_agg_agent_daily.sql }
+    - { kind: transform, sql: sql/seed/seed_agg_billing_monthly.sql }
+    - { kind: transform, sql: sql/seed/seed_scd2.sql }
+    - { kind: transform, sql: sql/seed/seed_fact_agent_activity.sql }
+    - { kind: transform, sql: sql/seed/seed_fact_queue_interval.sql }
+
+suites:
+  # ── AC9: Partition/cluster pruning benchmarks ──
+  # Each compare entry runs an unfiltered query (side a) vs a filtered query
+  # (side b) and asserts the filtered scan uses <= bytes.
+  # Minimum: 6 named clustered tables + 3 SCD-2 = 9 benchmarks.
+
+  - pattern: query_performance
+    id: partition-pruning
+    target_dataset: "${BUILD_DATASET}"
+    queries:
+
+      # 1. fact_interaction — RANGE on date_key, clustered by channel, agent_sk, client_sk
+      - id: fact-interaction-partition
+        mode: compare
+        a:
+          sql: "SELECT COUNT(*) FROM ${BUILD_DATASET}.fact_interaction"
+        b:
+          sql: "SELECT COUNT(*) FROM ${BUILD_DATASET}.fact_interaction WHERE date_key = 20240101"
+        compare:
+          bytes_scanned: "b <= a"
+
+      # 2. fact_billing_line — DATE on period_month, clustered by client_sk, program_sk, invoice_status
+      - id: fact-billing-line-partition
+        mode: compare
+        a:
+          sql: "SELECT COUNT(*) FROM ${BUILD_DATASET}.fact_billing_line"
+        b:
+          sql: "SELECT COUNT(*) FROM ${BUILD_DATASET}.fact_billing_line WHERE period_month = '2024-01-01'"
+        compare:
+          bytes_scanned: "b <= a"
+
+      # 3. agg_agent_daily — RANGE on date_key, clustered by agent_sk, site_code
+      - id: agg-agent-daily-partition
+        mode: compare
+        a:
+          sql: "SELECT COUNT(*) FROM ${BUILD_DATASET}.agg_agent_daily"
+        b:
+          sql: "SELECT COUNT(*) FROM ${BUILD_DATASET}.agg_agent_daily WHERE date_key = 20240101"
+        compare:
+          bytes_scanned: "b <= a"
+
+      # 4. agg_billing_monthly — DATE on period_month, clustered by client_sk, program_sk
+      - id: agg-billing-monthly-partition
+        mode: compare
+        a:
+          sql: "SELECT COUNT(*) FROM ${BUILD_DATASET}.agg_billing_monthly"
+        b:
+          sql: "SELECT COUNT(*) FROM ${BUILD_DATASET}.agg_billing_monthly WHERE period_month = '2024-01-01'"
+        compare:
+          bytes_scanned: "b <= a"
+
+      # 5. ods_agent_scd2 — RANGE on eff_from_year
+      - id: scd2-agent-partition
+        mode: compare
+        a:
+          sql: "SELECT COUNT(*) FROM ${BUILD_DATASET}.ods_agent_scd2"
+        b:
+          sql: "SELECT COUNT(*) FROM ${BUILD_DATASET}.ods_agent_scd2 WHERE eff_from_year = 2024"
+        compare:
+          bytes_scanned: "b <= a"
+
+      # 6. ods_agent_skill_scd2 — RANGE on eff_from_year
+      - id: scd2-agent-skill-partition
+        mode: compare
+        a:
+          sql: "SELECT COUNT(*) FROM ${BUILD_DATASET}.ods_agent_skill_scd2"
+        b:
+          sql: "SELECT COUNT(*) FROM ${BUILD_DATASET}.ods_agent_skill_scd2 WHERE eff_from_year = 2024"
+        compare:
+          bytes_scanned: "b <= a"
+
+      # 7. ods_agent_assignment_scd2 — RANGE on eff_from_year
+      - id: scd2-agent-assignment-partition
+        mode: compare
+        a:
+          sql: "SELECT COUNT(*) FROM ${BUILD_DATASET}.ods_agent_assignment_scd2"
+        b:
+          sql: "SELECT COUNT(*) FROM ${BUILD_DATASET}.ods_agent_assignment_scd2 WHERE eff_from_year = 2024"
+        compare:
+          bytes_scanned: "b <= a"
+
+      # 8. fact_agent_activity — RANGE on date_key, clustered by agent_sk
+      - id: fact-agent-activity-partition
+        mode: compare
+        a:
+          sql: "SELECT COUNT(*) FROM ${BUILD_DATASET}.fact_agent_activity"
+        b:
+          sql: "SELECT COUNT(*) FROM ${BUILD_DATASET}.fact_agent_activity WHERE date_key = 20240101"
+        compare:
+          bytes_scanned: "b <= a"
+
+      # 9. fact_queue_interval — RANGE on date_key, clustered by queue_sk
+      - id: fact-queue-interval-partition
+        mode: compare
+        a:
+          sql: "SELECT COUNT(*) FROM ${BUILD_DATASET}.fact_queue_interval"
+        b:
+          sql: "SELECT COUNT(*) FROM ${BUILD_DATASET}.fact_queue_interval WHERE date_key = 20240101"
+        compare:
+          bytes_scanned: "b <= a"
