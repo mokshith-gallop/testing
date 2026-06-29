@@ -1,0 +1,1396 @@
+# schema_apply.mvs.yaml — TARGET-ONLY schema conformance
+# Proves all 100 BigQuery tables build and match the declared shape.
+# AC1 (DDL creates), AC3 (object type), AC4 (partition/cluster), AC7/AC8 (integrity)
+#
+# NO source_setup / source_database — this spec only checks the target.
+# Source cross-check is in schema_typemap.mvs.yaml.
+
+name: schema_apply
+
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+migration:
+  steps:
+    - { kind: ddl, sql: sql/ddl/02-staging-sqoop-mirrors.sql }
+    - { kind: ddl, sql: sql/ddl/03-staging-delta-feeds.sql }
+    - { kind: ddl, sql: sql/ddl/04-staging-file-feeds.sql }
+    - { kind: ddl, sql: sql/ddl/05-ods-cleanse.sql }
+    - { kind: ddl, sql: sql/ddl/06-ods-delta-scd2.sql }
+    - { kind: ddl, sql: sql/ddl/07-ods-acid.sql }
+    - { kind: ddl, sql: sql/ddl/08-dm-tables.sql }
+
+suites:
+  # ── Staging (45 tables) ──
+  - pattern: schema_conformance
+    id: staging-schema
+    target_dataset: "${BUILD_DATASET}"
+    expect_table_count: 100
+    tables:
+        - table: stg_crm_client
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [client_id]
+          columns:
+            - {name: client_id, type: INT64}
+            - {name: client_code, type: STRING}
+            - {name: client_name, type: STRING}
+            - {name: industry, type: STRING}
+            - {name: hq_country, type: STRING}
+            - {name: status, type: STRING}
+            - {name: created_ts, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: updated_ts, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: load_date, type: DATE}
+        - table: stg_crm_client_contact
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [contact_id]
+          columns:
+            - {name: contact_id, type: INT64}
+            - {name: client_id, type: INT64}
+            - {name: full_name, type: STRING}
+            - {name: email, type: STRING}
+            - {name: phone, type: STRING}
+            - {name: role, type: STRING}
+            - {name: is_primary, type: BOOL}
+            - {name: created_ts, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: load_date, type: DATE}
+        - table: stg_crm_program
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [program_id]
+          columns:
+            - {name: program_id, type: INT64}
+            - {name: client_id, type: INT64}
+            - {name: program_code, type: STRING}
+            - {name: program_name, type: STRING}
+            - {name: line_of_business, type: STRING}
+            - {name: channel_mix, type: STRING}
+            - {name: site_code, type: STRING}
+            - {name: status, type: STRING}
+            - {name: go_live_ts, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: updated_ts, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: load_date, type: DATE}
+        - table: stg_crm_contract
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [contract_id]
+          columns:
+            - {name: contract_id, type: INT64}
+            - {name: client_id, type: INT64}
+            - {name: program_id, type: INT64}
+            - {name: contract_no, type: STRING}
+            - {name: start_dt, type: STRING, description: 'Oracle string YYYYMMDDHH24MISS (legacy)'}
+            - {name: end_dt, type: STRING, description: 'Oracle string YYYYMMDDHH24MISS (legacy)'}
+            - {name: billing_model, type: STRING}
+            - {name: currency, type: STRING}
+            - {name: signed_dt, type: STRING, description: 'Oracle string YYYYMMDDHH24MISS (legacy)'}
+            - {name: status, type: STRING}
+            - {name: load_date, type: DATE}
+        - table: stg_crm_contract_line
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [contract_line_id]
+          columns:
+            - {name: contract_line_id, type: INT64}
+            - {name: contract_id, type: INT64}
+            - {name: line_no, type: INT64}
+            - {name: service_code, type: STRING}
+            - {name: uom, type: STRING}
+            - {name: unit_rate, type: "NUMERIC(12,4)", scale: 4}
+            - {name: min_commit, type: "NUMERIC(12,2)", scale: 2}
+            - {name: effective_dt, type: STRING, description: 'Oracle string YYYYMMDDHH24MISS (legacy)'}
+            - {name: load_date, type: DATE}
+        - table: stg_crm_sla_target
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [sla_target_id]
+          columns:
+            - {name: sla_target_id, type: INT64}
+            - {name: program_id, type: INT64}
+            - {name: queue_id, type: INT64}
+            - {name: metric_code, type: STRING}
+            - {name: target_value, type: "NUMERIC(10,4)", scale: 4}
+            - {name: penalty_pct, type: "NUMERIC(5,2)", scale: 2}
+            - {name: effective_ts, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: load_date, type: DATE}
+        - table: stg_hr_agent
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [agent_id]
+          columns:
+            - {name: agent_id, type: INT64}
+            - {name: employee_no, type: STRING}
+            - {name: first_name, type: STRING}
+            - {name: last_name, type: STRING}
+            - {name: email, type: STRING}
+            - {name: org_unit_id, type: INT64}
+            - {name: job_grade, type: STRING}
+            - {name: employment_type, type: STRING}
+            - {name: hire_ts, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: term_ts, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: status, type: STRING}
+            - {name: load_date, type: DATE}
+        - table: stg_hr_org_unit
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [org_unit_id]
+          columns:
+            - {name: org_unit_id, type: INT64}
+            - {name: parent_unit_id, type: INT64}
+            - {name: unit_code, type: STRING}
+            - {name: unit_name, type: STRING}
+            - {name: unit_type, type: STRING}
+            - {name: site_code, type: STRING}
+            - {name: cost_center, type: STRING}
+            - {name: created_ts, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: load_date, type: DATE}
+        - table: stg_hr_employment_event
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [event_id]
+          columns:
+            - {name: event_id, type: INT64}
+            - {name: agent_id, type: INT64}
+            - {name: event_type, type: STRING}
+            - {name: event_ts, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: from_org_unit_id, type: INT64}
+            - {name: to_org_unit_id, type: INT64}
+            - {name: reason_code, type: STRING}
+            - {name: load_date, type: DATE}
+        - table: stg_hr_skill
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [skill_id]
+          columns:
+            - {name: skill_id, type: INT64}
+            - {name: skill_code, type: STRING}
+            - {name: skill_name, type: STRING}
+            - {name: skill_family, type: STRING}
+            - {name: created_ts, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: load_date, type: DATE}
+        - table: stg_hr_agent_skill
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [agent_skill_id]
+          columns:
+            - {name: agent_skill_id, type: INT64}
+            - {name: agent_id, type: INT64}
+            - {name: skill_id, type: INT64}
+            - {name: proficiency, type: INT64}
+            - {name: certified, type: BOOL}
+            - {name: effective_ts, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: expiry_ts, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: load_date, type: DATE}
+        - table: stg_wfm_shift
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [shift_id]
+          columns:
+            - {name: shift_id, type: INT64}
+            - {name: shift_code, type: STRING}
+            - {name: shift_name, type: STRING}
+            - {name: start_hhmm, type: STRING}
+            - {name: end_hhmm, type: STRING}
+            - {name: overnight_flag, type: BOOL}
+            - {name: site_code, type: STRING}
+            - {name: created_epoch, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: load_date, type: DATE}
+        - table: stg_wfm_schedule
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [schedule_id, site_code]
+          columns:
+            - {name: schedule_id, type: INT64}
+            - {name: agent_id, type: INT64}
+            - {name: shift_id, type: INT64}
+            - {name: sched_date, type: STRING}
+            - {name: start_epoch, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: end_epoch, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: paid_minutes, type: INT64}
+            - {name: activity_code, type: STRING}
+            - {name: site_code, type: STRING}
+            - {name: load_date, type: DATE}
+        - table: stg_wfm_adherence_event
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [adherence_event_id]
+          columns:
+            - {name: adherence_event_id, type: INT64}
+            - {name: agent_id, type: INT64}
+            - {name: schedule_id, type: INT64}
+            - {name: exception_type, type: STRING}
+            - {name: start_epoch, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: end_epoch, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: approved_flag, type: BOOL}
+            - {name: load_date, type: DATE}
+        - table: stg_wfm_forecast
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [forecast_id]
+          columns:
+            - {name: forecast_id, type: INT64}
+            - {name: queue_id, type: INT64}
+            - {name: interval_start_epoch, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: forecast_volume, type: INT64}
+            - {name: forecast_aht_sec, type: INT64}
+            - {name: required_fte, type: "NUMERIC(8,2)", scale: 2}
+            - {name: load_date, type: DATE}
+        - table: stg_wfm_timeoff_request
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [timeoff_id]
+          columns:
+            - {name: timeoff_id, type: INT64}
+            - {name: agent_id, type: INT64}
+            - {name: request_epoch, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: start_date, type: STRING}
+            - {name: end_date, type: STRING}
+            - {name: timeoff_type, type: STRING}
+            - {name: status, type: STRING}
+            - {name: load_date, type: DATE}
+        - table: stg_tel_call
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [call_id]
+          columns:
+            - {name: call_id, type: INT64}
+            - {name: ani, type: STRING}
+            - {name: dnis, type: STRING}
+            - {name: queue_id, type: INT64}
+            - {name: agent_id, type: INT64}
+            - {name: program_id, type: INT64}
+            - {name: start_epoch, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: answer_epoch, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: end_epoch, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: disposition_code, type: STRING}
+            - {name: direction, type: STRING}
+            - {name: recording_id, type: STRING}
+            - {name: load_date, type: DATE}
+        - table: stg_tel_call_segment
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [segment_id]
+          columns:
+            - {name: segment_id, type: INT64}
+            - {name: call_id, type: INT64}
+            - {name: segment_no, type: INT64}
+            - {name: segment_type, type: STRING}
+            - {name: start_epoch, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: end_epoch, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: agent_id, type: INT64}
+            - {name: load_date, type: DATE}
+        - table: stg_tel_queue
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [queue_id]
+          columns:
+            - {name: queue_id, type: INT64}
+            - {name: queue_code, type: STRING}
+            - {name: queue_name, type: STRING}
+            - {name: program_id, type: INT64}
+            - {name: media_type, type: STRING}
+            - {name: priority, type: INT64}
+            - {name: created_epoch, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: load_date, type: DATE}
+        - table: stg_tel_agent_state_event
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [state_event_id]
+          columns:
+            - {name: state_event_id, type: INT64}
+            - {name: agent_id, type: INT64}
+            - {name: state_code, type: STRING}
+            - {name: start_epoch, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: end_epoch, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: reason_code, type: STRING}
+            - {name: load_date, type: DATE}
+        - table: stg_tel_disposition_code
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [disposition_code]
+          columns:
+            - {name: disposition_code, type: STRING}
+            - {name: disposition_desc, type: STRING}
+            - {name: category, type: STRING}
+            - {name: billable_flag, type: BOOL}
+            - {name: created_epoch, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: load_date, type: DATE}
+        - table: stg_tkt_ticket
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [ticket_id]
+          columns:
+            - {name: ticket_id, type: INT64}
+            - {name: ticket_no, type: STRING}
+            - {name: program_id, type: INT64}
+            - {name: category_id, type: INT64}
+            - {name: opened_by_agent_id, type: INT64}
+            - {name: assigned_agent_id, type: INT64}
+            - {name: interaction_ref, type: STRING}
+            - {name: priority, type: STRING}
+            - {name: status, type: STRING}
+            - {name: created_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: updated_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: load_date, type: DATE}
+        - table: stg_tkt_ticket_event
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [ticket_event_id]
+          columns:
+            - {name: ticket_event_id, type: INT64}
+            - {name: ticket_id, type: INT64}
+            - {name: event_type, type: STRING}
+            - {name: event_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: actor_agent_id, type: INT64}
+            - {name: old_value, type: STRING}
+            - {name: new_value, type: STRING}
+            - {name: load_date, type: DATE}
+        - table: stg_tkt_category
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [category_id]
+          columns:
+            - {name: category_id, type: INT64}
+            - {name: category_code, type: STRING}
+            - {name: category_name, type: STRING}
+            - {name: sla_hours, type: INT64}
+            - {name: created_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: load_date, type: DATE}
+        - table: stg_fin_invoice
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [invoice_id]
+          columns:
+            - {name: invoice_id, type: INT64}
+            - {name: invoice_no, type: STRING}
+            - {name: client_id, type: INT64}
+            - {name: program_id, type: INT64}
+            - {name: period_month, type: STRING}
+            - {name: issued_ts_sec, type: INT64, description: '!! name says seconds, VALUES ARE MILLIS !!'}
+            - {name: due_ts_sec, type: INT64, description: '!! name says seconds, VALUES ARE MILLIS !!'}
+            - {name: currency, type: STRING}
+            - {name: total_amount, type: "NUMERIC(14,2)", scale: 2}
+            - {name: status, type: STRING}
+            - {name: load_date, type: DATE}
+        - table: stg_fin_invoice_line
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [invoice_line_id]
+          columns:
+            - {name: invoice_line_id, type: INT64}
+            - {name: invoice_id, type: INT64}
+            - {name: contract_line_id, type: INT64}
+            - {name: qty, type: "NUMERIC(12,2)", scale: 2}
+            - {name: unit_rate, type: "NUMERIC(12,4)", scale: 4}
+            - {name: line_amount, type: "NUMERIC(14,2)", scale: 2}
+            - {name: adjustment_flag, type: BOOL}
+            - {name: created_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: load_date, type: DATE}
+        - table: stg_fin_rate_card
+          expect_object_type: TABLE
+          partition_by: load_date
+          cluster_by: [rate_card_id]
+          columns:
+            - {name: rate_card_id, type: INT64}
+            - {name: program_id, type: INT64}
+            - {name: service_code, type: STRING}
+            - {name: rate, type: "NUMERIC(12,4)", scale: 4}
+            - {name: currency, type: STRING}
+            - {name: effective_ts, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: expiry_ts, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: load_date, type: DATE}
+        - table: stg_fin_timesheet_delta
+          expect_object_type: TABLE
+          partition_by: extract_ts
+          cluster_by: [timesheet_id]
+          columns:
+            - {name: timesheet_id, type: INT64}
+            - {name: agent_id, type: INT64}
+            - {name: work_date, type: STRING}
+            - {name: program_id, type: INT64}
+            - {name: billable_minutes, type: INT64}
+            - {name: nonbillable_minutes, type: INT64}
+            - {name: approved_flag, type: BOOL}
+            - {name: op, type: STRING}
+            - {name: change_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: extract_ts, type: DATE}
+        - table: stg_fin_payroll_adj_delta
+          expect_object_type: TABLE
+          partition_by: extract_ts
+          cluster_by: [adjustment_id]
+          columns:
+            - {name: adjustment_id, type: INT64}
+            - {name: agent_id, type: INT64}
+            - {name: period_month, type: STRING}
+            - {name: adj_type, type: STRING}
+            - {name: amount, type: "NUMERIC(12,2)", scale: 2}
+            - {name: op, type: STRING}
+            - {name: change_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: extract_ts, type: DATE}
+        - table: stg_crm_sla_credit_delta
+          expect_object_type: TABLE
+          partition_by: extract_ts
+          cluster_by: [sla_credit_id]
+          columns:
+            - {name: sla_credit_id, type: INT64}
+            - {name: program_id, type: INT64}
+            - {name: sla_target_id, type: INT64}
+            - {name: period_month, type: STRING}
+            - {name: credit_amount, type: "NUMERIC(12,2)", scale: 2}
+            - {name: reason, type: STRING}
+            - {name: op, type: STRING}
+            - {name: change_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: extract_ts, type: DATE}
+        - table: stg_tel_callback_request_delta
+          expect_object_type: TABLE
+          partition_by: extract_ts
+          cluster_by: [callback_id]
+          columns:
+            - {name: callback_id, type: INT64}
+            - {name: call_id, type: INT64}
+            - {name: queue_id, type: INT64}
+            - {name: requested_epoch, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: scheduled_epoch, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: completed_flag, type: BOOL}
+            - {name: op, type: STRING}
+            - {name: change_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: extract_ts, type: DATE}
+        - table: stg_wfm_shift_swap_delta
+          expect_object_type: TABLE
+          partition_by: extract_ts
+          cluster_by: [swap_id]
+          columns:
+            - {name: swap_id, type: INT64}
+            - {name: requesting_agent_id, type: INT64}
+            - {name: accepting_agent_id, type: INT64}
+            - {name: schedule_id, type: INT64}
+            - {name: swap_date, type: STRING}
+            - {name: status, type: STRING}
+            - {name: op, type: STRING}
+            - {name: change_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: extract_ts, type: DATE}
+        - table: stg_tkt_worklog_delta
+          expect_object_type: TABLE
+          partition_by: extract_ts
+          cluster_by: [worklog_id]
+          columns:
+            - {name: worklog_id, type: INT64}
+            - {name: ticket_id, type: INT64}
+            - {name: agent_id, type: INT64}
+            - {name: minutes_logged, type: INT64}
+            - {name: log_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: note, type: STRING}
+            - {name: op, type: STRING}
+            - {name: change_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: extract_ts, type: DATE}
+        - table: stg_hr_attrition_event_delta
+          expect_object_type: TABLE
+          partition_by: extract_ts
+          cluster_by: [attrition_event_id]
+          columns:
+            - {name: attrition_event_id, type: INT64}
+            - {name: agent_id, type: INT64}
+            - {name: notice_epoch, type: INT64, description: 'epoch SECONDS (legacy)'}
+            - {name: last_day, type: STRING}
+            - {name: attrition_type, type: STRING}
+            - {name: reason_code, type: STRING}
+            - {name: regrettable_flag, type: BOOL}
+            - {name: op, type: STRING}
+            - {name: change_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: extract_ts, type: DATE}
+        - table: stg_fin_rate_card_change_delta
+          expect_object_type: TABLE
+          partition_by: extract_ts
+          cluster_by: [rate_change_id]
+          columns:
+            - {name: rate_change_id, type: INT64}
+            - {name: rate_card_id, type: INT64}
+            - {name: old_rate, type: "NUMERIC(12,4)", scale: 4}
+            - {name: new_rate, type: "NUMERIC(12,4)", scale: 4}
+            - {name: change_reason, type: STRING}
+            - {name: op, type: STRING}
+            - {name: change_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: extract_ts, type: DATE}
+        - table: stg_file_interaction_export
+          expect_object_type: TABLE
+          partition_by: feed_date
+          cluster_by: [interaction_ref, client_code]
+          columns:
+            - {name: interaction_ref, type: STRING}
+            - {name: channel, type: STRING}
+            - {name: client_interaction_id, type: STRING}
+            - {name: agent_email, type: STRING}
+            - {name: start_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: end_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: outcome, type: STRING}
+            - {name: customer_ref, type: STRING}
+            - {name: client_code, type: STRING}
+            - {name: feed_date, type: DATE}
+        - table: stg_file_survey_csat
+          expect_object_type: TABLE
+          partition_by: feed_date
+          cluster_by: [survey_id, client_code]
+          columns:
+            - {name: survey_id, type: STRING}
+            - {name: interaction_ref, type: STRING}
+            - {name: survey_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: csat_score, type: INT64}
+            - {name: nps_score, type: INT64}
+            - {name: fcr_claimed, type: BOOL}
+            - {name: verbatim, type: STRING}
+            - {name: client_code, type: STRING}
+            - {name: feed_date, type: DATE}
+        - table: stg_file_qa_forms
+          expect_object_type: TABLE
+          partition_by: feed_date
+          cluster_by: [qa_form_id, client_code]
+          columns:
+            - {name: qa_form_id, type: STRING}
+            - {name: interaction_ref, type: STRING}
+            - {name: evaluator_email, type: STRING}
+            - {name: evaluated_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: form_version, type: STRING}
+            - {name: sections, type: "ARRAY<STRUCT<section_code STRING, max_points INT64, scored_points INT64>>"}
+            - {name: auto_fail, type: BOOL}
+            - {name: overall_pct, type: "NUMERIC(5,2)", scale: 2}
+            - {name: client_code, type: STRING}
+            - {name: feed_date, type: DATE}
+        - table: stg_file_ivr_logs
+          expect_object_type: TABLE
+          partition_by: feed_date
+          cluster_by: [client_code]
+          columns:
+            - {name: event_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: session_ref, type: STRING}
+            - {name: menu_path, type: STRING}
+            - {name: key_pressed, type: STRING}
+            - {name: raw_tail, type: STRING}
+            - {name: client_code, type: STRING}
+            - {name: feed_date, type: DATE}
+        - table: stg_file_chat_transcripts
+          expect_object_type: TABLE
+          partition_by: feed_date
+          cluster_by: [chat_ref, client_code]
+          columns:
+            - {name: chat_ref, type: STRING}
+            - {name: queue_code, type: STRING}
+            - {name: agent_email, type: STRING}
+            - {name: started_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: ended_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: messages, type: "ARRAY<STRUCT<sender STRING, ts_ms INT64, text STRING>>"}
+            - {name: metadata, type: "ARRAY<STRUCT<key STRING, value STRING>>"}
+            - {name: client_code, type: STRING}
+            - {name: feed_date, type: DATE}
+        - table: stg_file_roster
+          expect_object_type: TABLE
+          partition_by: feed_date
+          cluster_by: [employee_no, client_code]
+          columns:
+            - {name: employee_no, type: STRING}
+            - {name: agent_email, type: STRING}
+            - {name: client_login, type: STRING}
+            - {name: role_on_program, type: STRING}
+            - {name: active_flag, type: BOOL}
+            - {name: as_of_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: client_code, type: STRING}
+            - {name: feed_date, type: DATE}
+        - table: stg_file_telco_invoice
+          expect_object_type: TABLE
+          partition_by: feed_date
+          cluster_by: [telco_invoice_id, client_code]
+          columns:
+            - {name: telco_invoice_id, type: STRING}
+            - {name: carrier, type: STRING}
+            - {name: circuit_id, type: STRING}
+            - {name: usage_minutes, type: INT64}
+            - {name: charge_amount, type: "NUMERIC(12,2)", scale: 2}
+            - {name: bill_period, type: STRING}
+            - {name: billed_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: client_code, type: STRING}
+            - {name: feed_date, type: DATE}
+        - table: stg_file_dialer_result
+          expect_object_type: TABLE
+          partition_by: feed_date
+          cluster_by: [attempt_id, client_code]
+          columns:
+            - {name: attempt_id, type: STRING}
+            - {name: campaign_code, type: STRING}
+            - {name: phone_hash, type: STRING}
+            - {name: agent_id, type: INT64}
+            - {name: attempt_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: result_code, type: STRING}
+            - {name: talk_seconds, type: INT64}
+            - {name: client_code, type: STRING}
+            - {name: feed_date, type: DATE}
+        - table: stg_file_email_interaction
+          expect_object_type: TABLE
+          partition_by: feed_date
+          cluster_by: [email_ref, client_code]
+          columns:
+            - {name: email_ref, type: STRING}
+            - {name: mailbox, type: STRING}
+            - {name: agent_email, type: STRING}
+            - {name: received_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: first_reply_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: resolved_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: subject_category, type: STRING}
+            - {name: client_code, type: STRING}
+            - {name: feed_date, type: DATE}
+        - table: stg_file_speech_analytics
+          expect_object_type: TABLE
+          partition_by: feed_date
+          cluster_by: [recording_id, client_code]
+          columns:
+            - {name: recording_id, type: STRING}
+            - {name: call_ref, type: STRING}
+            - {name: analyzed_ms, type: INT64, description: 'epoch MILLISECONDS (legacy)'}
+            - {name: sentiment_score, type: FLOAT64}
+            - {name: silence_pct, type: FLOAT64}
+            - {name: talk_over_count, type: INT64}
+            - {name: keywords, type: "ARRAY<STRING>"}
+            - {name: client_code, type: STRING}
+            - {name: feed_date, type: DATE}
+
+  # ── ODS (30 tables) ──
+  - pattern: schema_conformance
+    id: ods-schema
+    target_dataset: "${BUILD_DATASET}"
+    tables:
+        - table: ods_program
+          expect_object_type: TABLE
+          partition_by: snapshot_date
+          columns:
+            - {name: program_id, type: INT64}
+            - {name: client_id, type: INT64}
+            - {name: program_code, type: STRING}
+            - {name: program_name, type: STRING}
+            - {name: line_of_business, type: STRING}
+            - {name: channel_mix, type: STRING}
+            - {name: site_code, type: STRING}
+            - {name: status, type: STRING}
+            - {name: go_live_ts, type: TIMESTAMP}
+            - {name: updated_ts, type: TIMESTAMP}
+            - {name: snapshot_date, type: DATE}
+        - table: ods_contract
+          expect_object_type: TABLE
+          partition_by: snapshot_date
+          columns:
+            - {name: contract_id, type: INT64}
+            - {name: client_id, type: INT64}
+            - {name: program_id, type: INT64}
+            - {name: contract_no, type: STRING}
+            - {name: start_ts, type: TIMESTAMP}
+            - {name: end_ts, type: TIMESTAMP}
+            - {name: billing_model, type: STRING}
+            - {name: currency, type: STRING}
+            - {name: signed_ts, type: TIMESTAMP}
+            - {name: status, type: STRING}
+            - {name: snapshot_date, type: DATE}
+        - table: ods_contract_line
+          expect_object_type: TABLE
+          partition_by: snapshot_date
+          columns:
+            - {name: contract_line_id, type: INT64}
+            - {name: contract_id, type: INT64}
+            - {name: line_no, type: INT64}
+            - {name: service_code, type: STRING}
+            - {name: uom, type: STRING}
+            - {name: unit_rate, type: "NUMERIC(12,4)", scale: 4}
+            - {name: min_commit, type: "NUMERIC(12,2)", scale: 2}
+            - {name: effective_ts, type: TIMESTAMP}
+            - {name: snapshot_date, type: DATE}
+        - table: ods_org_unit
+          expect_object_type: TABLE
+          partition_by: snapshot_date
+          columns:
+            - {name: org_unit_id, type: INT64}
+            - {name: parent_unit_id, type: INT64}
+            - {name: unit_code, type: STRING}
+            - {name: unit_name, type: STRING}
+            - {name: unit_type, type: STRING}
+            - {name: site_code, type: STRING}
+            - {name: cost_center, type: STRING}
+            - {name: created_ts, type: TIMESTAMP}
+            - {name: snapshot_date, type: DATE}
+        - table: ods_queue
+          expect_object_type: TABLE
+          partition_by: snapshot_date
+          columns:
+            - {name: queue_id, type: INT64}
+            - {name: queue_code, type: STRING}
+            - {name: queue_name, type: STRING}
+            - {name: program_id, type: INT64}
+            - {name: media_type, type: STRING}
+            - {name: priority, type: INT64}
+            - {name: created_ts, type: TIMESTAMP}
+            - {name: snapshot_date, type: DATE}
+        - table: ods_schedule
+          expect_object_type: TABLE
+          partition_by: sched_date
+          columns:
+            - {name: schedule_id, type: INT64}
+            - {name: agent_id, type: INT64}
+            - {name: shift_id, type: INT64}
+            - {name: shift_code, type: STRING}
+            - {name: start_ts, type: TIMESTAMP}
+            - {name: end_ts, type: TIMESTAMP}
+            - {name: paid_minutes, type: INT64}
+            - {name: activity_code, type: STRING}
+            - {name: site_code, type: STRING}
+            - {name: sched_date, type: DATE}
+        - table: ods_adherence_event
+          expect_object_type: TABLE
+          partition_by: event_date
+          columns:
+            - {name: adherence_event_id, type: INT64}
+            - {name: agent_id, type: INT64}
+            - {name: schedule_id, type: INT64}
+            - {name: exception_type, type: STRING}
+            - {name: start_ts, type: TIMESTAMP}
+            - {name: end_ts, type: TIMESTAMP}
+            - {name: exception_minutes, type: INT64}
+            - {name: approved_flag, type: BOOL}
+            - {name: event_date, type: DATE}
+        - table: ods_call
+          expect_object_type: TABLE
+          partition_by: call_date
+          columns:
+            - {name: call_id, type: INT64}
+            - {name: queue_id, type: INT64}
+            - {name: agent_id, type: INT64}
+            - {name: program_id, type: INT64}
+            - {name: direction, type: STRING}
+            - {name: start_ts, type: TIMESTAMP}
+            - {name: answer_ts, type: TIMESTAMP}
+            - {name: end_ts, type: TIMESTAMP}
+            - {name: ring_seconds, type: INT64}
+            - {name: talk_seconds, type: INT64}
+            - {name: hold_seconds, type: INT64}
+            - {name: acw_seconds, type: INT64}
+            - {name: abandoned_flag, type: BOOL}
+            - {name: disposition_code, type: STRING}
+            - {name: recording_id, type: STRING}
+            - {name: call_date, type: DATE}
+        - table: ods_ivr_session
+          expect_object_type: TABLE
+          partition_by: event_date
+          columns:
+            - {name: session_ref, type: STRING}
+            - {name: client_code, type: STRING}
+            - {name: first_event_ts, type: TIMESTAMP}
+            - {name: last_event_ts, type: TIMESTAMP}
+            - {name: menu_path_full, type: STRING}
+            - {name: hops, type: INT64}
+            - {name: contained_flag, type: BOOL}
+            - {name: exit_key, type: STRING}
+            - {name: event_date, type: DATE}
+        - table: ods_chat_session
+          expect_object_type: TABLE
+          partition_by: event_date
+          columns:
+            - {name: chat_ref, type: STRING}
+            - {name: client_code, type: STRING}
+            - {name: queue_code, type: STRING}
+            - {name: agent_email, type: STRING}
+            - {name: started_ts, type: TIMESTAMP}
+            - {name: ended_ts, type: TIMESTAMP}
+            - {name: message_count, type: INT64}
+            - {name: agent_message_count, type: INT64}
+            - {name: customer_message_count, type: INT64}
+            - {name: first_response_seconds, type: INT64}
+            - {name: event_date, type: DATE}
+        - table: ods_email_interaction
+          expect_object_type: TABLE
+          partition_by: event_date
+          columns:
+            - {name: email_ref, type: STRING}
+            - {name: client_code, type: STRING}
+            - {name: mailbox, type: STRING}
+            - {name: agent_email, type: STRING}
+            - {name: received_ts, type: TIMESTAMP}
+            - {name: first_reply_ts, type: TIMESTAMP}
+            - {name: resolved_ts, type: TIMESTAMP}
+            - {name: reply_sla_minutes, type: INT64}
+            - {name: subject_category, type: STRING}
+            - {name: event_date, type: DATE}
+        - table: ods_survey_response
+          expect_object_type: TABLE
+          partition_by: event_date
+          columns:
+            - {name: survey_id, type: STRING}
+            - {name: client_code, type: STRING}
+            - {name: interaction_ref, type: STRING}
+            - {name: survey_ts, type: TIMESTAMP}
+            - {name: csat_score, type: INT64}
+            - {name: nps_score, type: INT64}
+            - {name: fcr_claimed, type: BOOL}
+            - {name: verbatim, type: STRING}
+            - {name: event_date, type: DATE}
+        - table: ods_qa_evaluation
+          expect_object_type: TABLE
+          partition_by: event_date
+          columns:
+            - {name: qa_form_id, type: STRING}
+            - {name: client_code, type: STRING}
+            - {name: interaction_ref, type: STRING}
+            - {name: evaluator_email, type: STRING}
+            - {name: evaluated_ts, type: TIMESTAMP}
+            - {name: form_version, type: STRING}
+            - {name: section_count, type: INT64}
+            - {name: scored_points, type: INT64}
+            - {name: max_points, type: INT64}
+            - {name: auto_fail, type: BOOL}
+            - {name: overall_pct, type: "NUMERIC(5,2)", scale: 2}
+            - {name: event_date, type: DATE}
+        - table: ods_interaction
+          expect_object_type: TABLE
+          partition_by: event_date
+          columns:
+            - {name: interaction_id, type: STRING}
+            - {name: channel, type: STRING}
+            - {name: client_code, type: STRING}
+            - {name: program_id, type: INT64}
+            - {name: queue_id, type: INT64}
+            - {name: agent_id, type: INT64}
+            - {name: customer_ref, type: STRING}
+            - {name: start_ts, type: TIMESTAMP}
+            - {name: end_ts, type: TIMESTAMP}
+            - {name: handle_seconds, type: INT64}
+            - {name: resolved_flag, type: BOOL}
+            - {name: source_system, type: STRING}
+            - {name: event_date, type: DATE}
+        - table: ods_dialer_attempt
+          expect_object_type: TABLE
+          partition_by: event_date
+          columns:
+            - {name: attempt_id, type: STRING}
+            - {name: client_code, type: STRING}
+            - {name: campaign_code, type: STRING}
+            - {name: agent_id, type: INT64}
+            - {name: attempt_ts, type: TIMESTAMP}
+            - {name: result_code, type: STRING}
+            - {name: connected_flag, type: BOOL}
+            - {name: talk_seconds, type: INT64}
+            - {name: event_date, type: DATE}
+        - table: ods_timesheet
+          expect_object_type: TABLE
+          partition_by: work_month
+          columns:
+            - {name: timesheet_id, type: INT64}
+            - {name: agent_id, type: INT64}
+            - {name: work_date, type: STRING}
+            - {name: program_id, type: INT64}
+            - {name: billable_minutes, type: INT64}
+            - {name: nonbillable_minutes, type: INT64}
+            - {name: approved_flag, type: BOOL}
+            - {name: last_change_ts, type: TIMESTAMP}
+            - {name: work_month, type: DATE}
+        - table: ods_payroll_adjustment
+          expect_object_type: TABLE
+          partition_by: period_month
+          columns:
+            - {name: adjustment_id, type: INT64}
+            - {name: agent_id, type: INT64}
+            - {name: adj_type, type: STRING}
+            - {name: amount, type: "NUMERIC(12,2)", scale: 2}
+            - {name: last_change_ts, type: TIMESTAMP}
+            - {name: period_month, type: DATE}
+        - table: ods_sla_credit
+          expect_object_type: TABLE
+          partition_by: period_month
+          columns:
+            - {name: sla_credit_id, type: INT64}
+            - {name: program_id, type: INT64}
+            - {name: sla_target_id, type: INT64}
+            - {name: credit_amount, type: "NUMERIC(12,2)", scale: 2}
+            - {name: reason, type: STRING}
+            - {name: last_change_ts, type: TIMESTAMP}
+            - {name: period_month, type: DATE}
+        - table: ods_callback_request
+          expect_object_type: TABLE
+          partition_by: event_date
+          columns:
+            - {name: callback_id, type: INT64}
+            - {name: call_id, type: INT64}
+            - {name: queue_id, type: INT64}
+            - {name: requested_ts, type: TIMESTAMP}
+            - {name: scheduled_ts, type: TIMESTAMP}
+            - {name: completed_flag, type: BOOL}
+            - {name: last_change_ts, type: TIMESTAMP}
+            - {name: event_date, type: DATE}
+        - table: ods_shift_swap
+          expect_object_type: TABLE
+          partition_by: swap_month
+          columns:
+            - {name: swap_id, type: INT64}
+            - {name: requesting_agent_id, type: INT64}
+            - {name: accepting_agent_id, type: INT64}
+            - {name: schedule_id, type: INT64}
+            - {name: swap_date, type: STRING}
+            - {name: status, type: STRING}
+            - {name: last_change_ts, type: TIMESTAMP}
+            - {name: swap_month, type: DATE}
+        - table: ods_ticket_worklog
+          expect_object_type: TABLE
+          partition_by: event_date
+          columns:
+            - {name: worklog_id, type: INT64}
+            - {name: ticket_id, type: INT64}
+            - {name: agent_id, type: INT64}
+            - {name: minutes_logged, type: INT64}
+            - {name: log_ts, type: TIMESTAMP}
+            - {name: note, type: STRING}
+            - {name: last_change_ts, type: TIMESTAMP}
+            - {name: event_date, type: DATE}
+        - table: ods_attrition_event
+          expect_object_type: TABLE
+          partition_by: event_month
+          columns:
+            - {name: attrition_event_id, type: INT64}
+            - {name: agent_id, type: INT64}
+            - {name: notice_ts, type: TIMESTAMP}
+            - {name: last_day, type: STRING}
+            - {name: attrition_type, type: STRING}
+            - {name: reason_code, type: STRING}
+            - {name: regrettable_flag, type: BOOL}
+            - {name: last_change_ts, type: TIMESTAMP}
+            - {name: event_month, type: DATE}
+        - table: ods_rate_card
+          expect_object_type: TABLE
+          partition_by: snapshot_date
+          columns:
+            - {name: rate_card_id, type: INT64}
+            - {name: program_id, type: INT64}
+            - {name: service_code, type: STRING}
+            - {name: rate, type: "NUMERIC(12,4)", scale: 4}
+            - {name: currency, type: STRING}
+            - {name: effective_ts, type: TIMESTAMP}
+            - {name: expiry_ts, type: TIMESTAMP}
+            - {name: last_change_ts, type: TIMESTAMP}
+            - {name: snapshot_date, type: DATE}
+        - table: ods_agent_scd2
+          expect_object_type: TABLE
+          partition_by: eff_from_year
+          columns:
+            - {name: agent_history_id, type: STRING}
+            - {name: agent_id, type: INT64}
+            - {name: employee_no, type: STRING}
+            - {name: org_unit_id, type: INT64}
+            - {name: job_grade, type: STRING}
+            - {name: employment_type, type: STRING}
+            - {name: status, type: STRING}
+            - {name: eff_from_ts, type: TIMESTAMP}
+            - {name: eff_to_ts, type: TIMESTAMP}
+            - {name: is_current, type: BOOL}
+            - {name: eff_from_year, type: INT64}
+        - table: ods_agent_skill_scd2
+          expect_object_type: TABLE
+          partition_by: eff_from_year
+          columns:
+            - {name: agent_skill_history_id, type: STRING}
+            - {name: agent_id, type: INT64}
+            - {name: skill_id, type: INT64}
+            - {name: skill_code, type: STRING}
+            - {name: proficiency, type: INT64}
+            - {name: certified, type: BOOL}
+            - {name: eff_from_ts, type: TIMESTAMP}
+            - {name: eff_to_ts, type: TIMESTAMP}
+            - {name: is_current, type: BOOL}
+            - {name: eff_from_year, type: INT64}
+        - table: ods_agent_assignment_scd2
+          expect_object_type: TABLE
+          partition_by: eff_from_year
+          columns:
+            - {name: assignment_history_id, type: STRING}
+            - {name: agent_id, type: INT64}
+            - {name: program_id, type: INT64}
+            - {name: queue_id, type: INT64}
+            - {name: role_on_program, type: STRING}
+            - {name: eff_from_ts, type: TIMESTAMP}
+            - {name: eff_to_ts, type: TIMESTAMP}
+            - {name: is_current, type: BOOL}
+            - {name: eff_from_year, type: INT64}
+        - table: ods_client_acid
+          expect_object_type: TABLE
+          columns:
+            - {name: client_id, type: INT64}
+            - {name: client_code, type: STRING}
+            - {name: client_name, type: STRING}
+            - {name: industry, type: STRING}
+            - {name: hq_country, type: STRING}
+            - {name: status, type: STRING}
+            - {name: created_ts, type: TIMESTAMP}
+            - {name: updated_ts, type: TIMESTAMP}
+        - table: ods_agent_acid
+          expect_object_type: TABLE
+          columns:
+            - {name: agent_id, type: INT64}
+            - {name: employee_no, type: STRING}
+            - {name: full_name, type: STRING}
+            - {name: email, type: STRING}
+            - {name: org_unit_id, type: INT64}
+            - {name: job_grade, type: STRING}
+            - {name: employment_type, type: STRING}
+            - {name: hire_ts, type: TIMESTAMP}
+            - {name: term_ts, type: TIMESTAMP}
+            - {name: status, type: STRING}
+        - table: ods_ticket_acid
+          expect_object_type: TABLE
+          columns:
+            - {name: ticket_id, type: INT64}
+            - {name: ticket_no, type: STRING}
+            - {name: program_id, type: INT64}
+            - {name: category_id, type: INT64}
+            - {name: assigned_agent_id, type: INT64}
+            - {name: priority, type: STRING}
+            - {name: status, type: STRING}
+            - {name: created_ts, type: TIMESTAMP}
+            - {name: updated_ts, type: TIMESTAMP}
+            - {name: resolved_ts, type: TIMESTAMP}
+        - table: ods_invoice_acid
+          expect_object_type: TABLE
+          columns:
+            - {name: invoice_id, type: INT64}
+            - {name: invoice_no, type: STRING}
+            - {name: client_id, type: INT64}
+            - {name: program_id, type: INT64}
+            - {name: period_month, type: STRING}
+            - {name: issued_ts, type: TIMESTAMP}
+            - {name: due_ts, type: TIMESTAMP}
+            - {name: currency, type: STRING}
+            - {name: total_amount, type: "NUMERIC(14,2)", scale: 2}
+            - {name: status, type: STRING}
+
+  # ── DM (25 tables) ──
+  - pattern: schema_conformance
+    id: dm-schema
+    target_dataset: "${BUILD_DATASET}"
+    tables:
+        - table: dim_date
+          expect_object_type: TABLE
+          columns:
+            - {name: date_key, type: INT64}
+            - {name: full_date, type: STRING}
+            - {name: day_of_week, type: INT64}
+            - {name: day_name, type: STRING}
+            - {name: week_of_year, type: INT64}
+            - {name: month_no, type: INT64}
+            - {name: month_name, type: STRING}
+            - {name: quarter_no, type: INT64}
+            - {name: year_no, type: INT64}
+            - {name: is_weekend, type: BOOL}
+            - {name: is_holiday_us, type: BOOL}
+            - {name: fiscal_period, type: STRING}
+        - table: dim_agent
+          expect_object_type: TABLE
+          columns:
+            - {name: agent_sk, type: INT64}
+            - {name: agent_id, type: INT64}
+            - {name: employee_no, type: STRING}
+            - {name: full_name, type: STRING}
+            - {name: job_grade, type: STRING}
+            - {name: employment_type, type: STRING}
+            - {name: org_unit_id, type: INT64}
+            - {name: team_name, type: STRING}
+            - {name: site_code, type: STRING}
+            - {name: status, type: STRING}
+            - {name: hire_date_key, type: INT64}
+            - {name: is_current, type: BOOL}
+        - table: dim_client
+          expect_object_type: TABLE
+          columns:
+            - {name: client_sk, type: INT64}
+            - {name: client_id, type: INT64}
+            - {name: client_code, type: STRING}
+            - {name: client_name, type: STRING}
+            - {name: industry, type: STRING}
+            - {name: hq_country, type: STRING}
+            - {name: primary_contact_name, type: STRING}
+            - {name: primary_contact_email, type: STRING}
+            - {name: status, type: STRING}
+        - table: dim_program
+          expect_object_type: TABLE
+          columns:
+            - {name: program_sk, type: INT64}
+            - {name: program_id, type: INT64}
+            - {name: program_code, type: STRING}
+            - {name: program_name, type: STRING}
+            - {name: client_id, type: INT64}
+            - {name: line_of_business, type: STRING}
+            - {name: channel_mix, type: STRING}
+            - {name: site_code, type: STRING}
+            - {name: billing_model, type: STRING}
+            - {name: status, type: STRING}
+            - {name: go_live_date_key, type: INT64}
+        - table: dim_queue
+          expect_object_type: TABLE
+          columns:
+            - {name: queue_sk, type: INT64}
+            - {name: queue_id, type: INT64}
+            - {name: queue_code, type: STRING}
+            - {name: queue_name, type: STRING}
+            - {name: program_id, type: INT64}
+            - {name: media_type, type: STRING}
+            - {name: priority, type: INT64}
+        - table: dim_site
+          expect_object_type: TABLE
+          columns:
+            - {name: site_sk, type: INT64}
+            - {name: site_code, type: STRING}
+            - {name: site_name, type: STRING}
+            - {name: region, type: STRING}
+            - {name: country, type: STRING}
+            - {name: timezone, type: STRING}
+        - table: dim_shift
+          expect_object_type: TABLE
+          columns:
+            - {name: shift_sk, type: INT64}
+            - {name: shift_id, type: INT64}
+            - {name: shift_code, type: STRING}
+            - {name: shift_name, type: STRING}
+            - {name: start_hhmm, type: STRING}
+            - {name: end_hhmm, type: STRING}
+            - {name: overnight_flag, type: BOOL}
+            - {name: site_code, type: STRING}
+        - table: dim_org
+          expect_object_type: TABLE
+          columns:
+            - {name: org_sk, type: INT64}
+            - {name: org_unit_id, type: INT64}
+            - {name: unit_code, type: STRING}
+            - {name: unit_name, type: STRING}
+            - {name: unit_type, type: STRING}
+            - {name: level1_name, type: STRING}
+            - {name: level2_name, type: STRING}
+            - {name: level3_name, type: STRING}
+            - {name: level4_name, type: STRING}
+            - {name: site_code, type: STRING}
+            - {name: cost_center, type: STRING}
+        - table: dim_disposition
+          expect_object_type: TABLE
+          columns:
+            - {name: disposition_sk, type: INT64}
+            - {name: disposition_code, type: STRING}
+            - {name: disposition_desc, type: STRING}
+            - {name: category, type: STRING}
+            - {name: billable_flag, type: BOOL}
+        - table: fact_interaction
+          expect_object_type: TABLE
+          partition_by: date_key
+          cluster_by: [channel, agent_sk, client_sk]
+          columns:
+            - {name: interaction_id, type: STRING}
+            - {name: client_sk, type: INT64}
+            - {name: program_sk, type: INT64}
+            - {name: queue_sk, type: INT64}
+            - {name: agent_sk, type: INT64}
+            - {name: customer_ref, type: STRING}
+            - {name: start_ts, type: TIMESTAMP}
+            - {name: end_ts, type: TIMESTAMP}
+            - {name: handle_seconds, type: INT64}
+            - {name: resolved_flag, type: BOOL}
+            - {name: source_system, type: STRING}
+            - {name: channel, type: STRING}
+            - {name: date_key, type: INT64}
+        - table: fact_agent_activity
+          expect_object_type: TABLE
+          partition_by: date_key
+          cluster_by: [agent_sk]
+          columns:
+            - {name: agent_sk, type: INT64}
+            - {name: state_code, type: STRING}
+            - {name: state_seconds, type: INT64}
+            - {name: occurrence_count, type: INT64}
+            - {name: first_state_ts, type: TIMESTAMP}
+            - {name: last_state_ts, type: TIMESTAMP}
+            - {name: date_key, type: INT64}
+        - table: fact_queue_interval
+          expect_object_type: TABLE
+          partition_by: date_key
+          cluster_by: [queue_sk]
+          columns:
+            - {name: queue_sk, type: INT64}
+            - {name: interval_start_ts, type: TIMESTAMP}
+            - {name: offered, type: INT64}
+            - {name: answered, type: INT64}
+            - {name: abandoned, type: INT64}
+            - {name: answered_in_sl, type: INT64}
+            - {name: sl_threshold_sec, type: INT64}
+            - {name: avg_speed_answer_sec, type: "NUMERIC(8,2)", scale: 2}
+            - {name: avg_handle_sec, type: "NUMERIC(8,2)", scale: 2}
+            - {name: date_key, type: INT64}
+        - table: fact_csat_survey
+          expect_object_type: TABLE
+          partition_by: date_key
+          columns:
+            - {name: survey_id, type: STRING}
+            - {name: interaction_id, type: STRING}
+            - {name: client_sk, type: INT64}
+            - {name: program_sk, type: INT64}
+            - {name: agent_sk, type: INT64}
+            - {name: survey_ts, type: TIMESTAMP}
+            - {name: csat_score, type: INT64}
+            - {name: nps_score, type: INT64}
+            - {name: fcr_claimed, type: BOOL}
+            - {name: date_key, type: INT64}
+        - table: fact_qa_evaluation
+          expect_object_type: TABLE
+          partition_by: date_key
+          columns:
+            - {name: qa_form_id, type: STRING}
+            - {name: interaction_id, type: STRING}
+            - {name: agent_sk, type: INT64}
+            - {name: program_sk, type: INT64}
+            - {name: evaluated_ts, type: TIMESTAMP}
+            - {name: scored_points, type: INT64}
+            - {name: max_points, type: INT64}
+            - {name: overall_pct, type: "NUMERIC(5,2)", scale: 2}
+            - {name: auto_fail, type: BOOL}
+            - {name: date_key, type: INT64}
+        - table: fact_billing_line
+          expect_object_type: TABLE
+          partition_by: period_month
+          cluster_by: [client_sk, program_sk, invoice_status]
+          columns:
+            - {name: invoice_line_id, type: INT64}
+            - {name: invoice_id, type: INT64}
+            - {name: client_sk, type: INT64}
+            - {name: program_sk, type: INT64}
+            - {name: service_code, type: STRING}
+            - {name: qty, type: "NUMERIC(12,2)", scale: 2}
+            - {name: unit_rate, type: "NUMERIC(12,4)", scale: 4}
+            - {name: line_amount, type: "NUMERIC(14,2)", scale: 2}
+            - {name: adjustment_flag, type: BOOL}
+            - {name: invoice_status, type: STRING}
+            - {name: period_month, type: DATE}
+        - table: fact_adherence_daily
+          expect_object_type: TABLE
+          partition_by: date_key
+          columns:
+            - {name: agent_sk, type: INT64}
+            - {name: scheduled_minutes, type: INT64}
+            - {name: worked_minutes, type: INT64}
+            - {name: exception_minutes, type: INT64}
+            - {name: timeoff_minutes, type: INT64}
+            - {name: adherence_pct, type: "NUMERIC(5,2)", scale: 2}
+            - {name: occupancy_pct, type: "NUMERIC(5,2)", scale: 2}
+            - {name: date_key, type: INT64}
+        - table: fact_ticket
+          expect_object_type: TABLE
+          partition_by: date_key
+          columns:
+            - {name: ticket_id, type: INT64}
+            - {name: program_sk, type: INT64}
+            - {name: category_code, type: STRING}
+            - {name: assigned_agent_sk, type: INT64}
+            - {name: priority, type: STRING}
+            - {name: status, type: STRING}
+            - {name: created_ts, type: TIMESTAMP}
+            - {name: resolved_ts, type: TIMESTAMP}
+            - {name: resolution_minutes, type: INT64}
+            - {name: sla_breached_flag, type: BOOL}
+            - {name: touch_count, type: INT64}
+            - {name: date_key, type: INT64}
+        - table: fact_ivr_path
+          expect_object_type: TABLE
+          partition_by: date_key
+          columns:
+            - {name: session_ref, type: STRING}
+            - {name: client_code, type: STRING}
+            - {name: menu_path_full, type: STRING}
+            - {name: hops, type: INT64}
+            - {name: contained_flag, type: BOOL}
+            - {name: exit_key, type: STRING}
+            - {name: duration_seconds, type: INT64}
+            - {name: date_key, type: INT64}
+        - table: agg_agent_daily
+          expect_object_type: TABLE
+          partition_by: date_key
+          cluster_by: [agent_sk, site_code]
+          columns:
+            - {name: agent_sk, type: INT64}
+            - {name: site_code, type: STRING}
+            - {name: interactions_handled, type: INT64}
+            - {name: avg_handle_seconds, type: "NUMERIC(8,2)", scale: 2}
+            - {name: talk_seconds, type: INT64}
+            - {name: acw_seconds, type: INT64}
+            - {name: aux_seconds, type: INT64}
+            - {name: adherence_pct, type: "NUMERIC(5,2)", scale: 2}
+            - {name: occupancy_pct, type: "NUMERIC(5,2)", scale: 2}
+            - {name: date_key, type: INT64}
+        - table: agg_agent_weekly
+          expect_object_type: TABLE
+          partition_by: week_start_key
+          columns:
+            - {name: agent_sk, type: INT64}
+            - {name: site_code, type: STRING}
+            - {name: days_worked, type: INT64}
+            - {name: interactions_handled, type: INT64}
+            - {name: avg_handle_seconds, type: "NUMERIC(8,2)", scale: 2}
+            - {name: adherence_pct, type: "NUMERIC(5,2)", scale: 2}
+            - {name: occupancy_pct, type: "NUMERIC(5,2)", scale: 2}
+            - {name: week_start_key, type: INT64}
+        - table: agg_program_monthly
+          expect_object_type: TABLE
+          partition_by: period_month
+          columns:
+            - {name: client_sk, type: INT64}
+            - {name: program_sk, type: INT64}
+            - {name: line_of_business, type: STRING}
+            - {name: interactions, type: INT64}
+            - {name: avg_handle_seconds, type: "NUMERIC(8,2)", scale: 2}
+            - {name: avg_csat, type: "NUMERIC(5,2)", scale: 2}
+            - {name: billed_amount, type: "NUMERIC(14,2)", scale: 2}
+            - {name: grouping_level, type: INT64}
+            - {name: period_month, type: DATE}
+        - table: agg_queue_hourly
+          expect_object_type: TABLE
+          partition_by: date_key
+          columns:
+            - {name: queue_sk, type: INT64}
+            - {name: hour_of_day, type: INT64}
+            - {name: offered, type: INT64}
+            - {name: answered, type: INT64}
+            - {name: abandoned, type: INT64}
+            - {name: sl_pct, type: "NUMERIC(5,2)", scale: 2}
+            - {name: forecast_volume, type: INT64}
+            - {name: volume_variance_pct, type: "NUMERIC(7,2)", scale: 2}
+            - {name: date_key, type: INT64}
+        - table: agg_csat_rollup_monthly
+          expect_object_type: TABLE
+          partition_by: period_month
+          columns:
+            - {name: client_sk, type: INT64}
+            - {name: program_sk, type: INT64}
+            - {name: site_code, type: STRING}
+            - {name: surveys, type: INT64}
+            - {name: avg_csat, type: "NUMERIC(5,2)", scale: 2}
+            - {name: pct_promoters, type: "NUMERIC(5,2)", scale: 2}
+            - {name: pct_detractors, type: "NUMERIC(5,2)", scale: 2}
+            - {name: grouping_id, type: INT64}
+            - {name: period_month, type: DATE}
+        - table: agg_billing_monthly
+          expect_object_type: TABLE
+          partition_by: period_month
+          cluster_by: [client_sk, program_sk]
+          columns:
+            - {name: client_sk, type: INT64}
+            - {name: program_sk, type: INT64}
+            - {name: billed_amount, type: "NUMERIC(14,2)", scale: 2}
+            - {name: sla_credit_amount, type: "NUMERIC(12,2)", scale: 2}
+            - {name: telco_cost_amount, type: "NUMERIC(12,2)", scale: 2}
+            - {name: net_revenue, type: "NUMERIC(14,2)", scale: 2}
+            - {name: period_month, type: DATE}
+        - table: agg_site_daily
+          expect_object_type: TABLE
+          partition_by: date_key
+          columns:
+            - {name: site_code, type: STRING}
+            - {name: agents_active, type: INT64}
+            - {name: interactions, type: INT64}
+            - {name: avg_handle_seconds, type: "NUMERIC(8,2)", scale: 2}
+            - {name: sl_pct, type: "NUMERIC(5,2)", scale: 2}
+            - {name: adherence_pct, type: "NUMERIC(5,2)", scale: 2}
+            - {name: date_key, type: INT64}
