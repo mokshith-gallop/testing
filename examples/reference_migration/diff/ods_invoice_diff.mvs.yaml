@@ -1,0 +1,29 @@
+# Reference EQUIVALENCE test — same `given` into BOTH engines, legacy T (Impala) vs
+# migrated T (BigQuery), assert identical output. The legacy T is the independent
+# ORACLE, so no hand-authored expect. A dialect-safe rollup (no epoch/timezone) so
+# the comparison tests the rewrite, not dialect quirks.
+name: reference_ods_invoice_diff
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+suites:
+  - pattern: transform_diff
+    id: ods_invoice_rollup
+    given:
+      ods_invoice_raw:
+        columns:
+          - { name: invoice_id, type: INT64 }
+          - { name: amount,     type: NUMERIC, scale: 2 }
+          - { name: op,         type: STRING }
+        rows:
+          - { invoice_id: 5001, amount: "100.00", op: "I" }
+          - { invoice_id: 5002, amount: "50.00",  op: "I" }
+          - { invoice_id: 5003, amount: "200.50", op: "U" }
+          - { invoice_id: 5099, amount: "9.99",   op: "D" }
+    legacy_sql: |
+      SELECT op, COUNT(*) AS n, SUM(amount) AS total
+      FROM ods_invoice_raw GROUP BY op
+    migrated_sql: |
+      SELECT op, COUNT(*) AS n, SUM(amount) AS total
+      FROM ods_invoice_raw GROUP BY op

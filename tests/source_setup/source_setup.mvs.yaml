@@ -1,0 +1,40 @@
+# source_setup GOLDEN — the harness stands up the legacy source from its real DDL
+# (sandbox-only, guarded by DMT_SOURCE_SETUP), then schema_conformance cross-checks the
+# built target against that live source, then it's all torn down. Golden must PASS.
+name: source_setup_golden
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+migration:
+  steps:
+    - { kind: ddl, sql_text: "CREATE TABLE ss_demo (id INT64, nm STRING, created_ts INT64)" }
+    - { kind: ddl, sql_text: "CREATE TABLE ss_logs (part_a STRING, part_b STRING)" }
+
+# Apply the legacy DDL to an EPHEMERAL sandbox source (hdfs:// LOCATION rewritten to
+# location_base, ACID->non-ACID), then drop it after the run. The fixture includes a
+# RegexSerDe table (ss_logs) Impala can't DESCRIBE -> the cross-check falls back to Hive.
+source_setup:
+  location_base: /tmp/dmt_src        # rehost the legacy hdfs:// LOCATIONs here (CI-writable)
+  ddl:
+    - tests/source_setup/fixture_legacy.hql
+
+suites:
+  - pattern: schema_conformance
+    id: source-setup-golden
+    target_dataset: "${BUILD_DATASET}"
+    source_database: dmt_legacy
+    tables:
+      - table: ss_demo
+        source_table: ss_demo
+        columns:
+          - { name: id,         type: INT64,  source_type: BIGINT }   # legacy BIGINT -> INT64
+          - { name: nm,         type: STRING, source_type: STRING }
+          - { name: created_ts, type: INT64,  source_type: BIGINT }
+      # ss_logs uses a RegexSerDe — Impala can't introspect it, so this row exercises the
+      # Impala->Hive source-read fallback (_introspect_source); the cross-check must still PASS.
+      - table: ss_logs
+        source_table: ss_logs
+        columns:
+          - { name: part_a, type: STRING, source_type: STRING }
+          - { name: part_b, type: STRING, source_type: STRING }

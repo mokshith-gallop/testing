@@ -1,0 +1,28 @@
+# BigQuery query-performance — measure + assert modes (BigQuery-only axis).
+# Stats come from the Job API (bytes/slot/elapsed), not client wall-clock.
+name: perf_golden
+description: measure perf numbers + assert a (free, deterministic) bytes budget.
+
+connections:
+  target: { engine: bigquery }
+
+suites:
+  - pattern: query_performance
+    id: perf
+    story_id: NBCS-PERF
+    queries:
+      # measure mode: record the numbers, no gate (shows up as a measurement, not an assertion)
+      - id: fact-agg-measure
+        mode: measure
+        runs: 3
+        sql: >
+          SELECT channel, COUNT(*) c, SUM(amount) s
+          FROM `${GCP_PROJECT}.${BQ_DATASET_1}.fact_interaction` GROUP BY channel
+
+      # assert mode via dry-run: bytes scanned is deterministic + FREE (no execution)
+      - id: fact-scan-bytes-budget
+        mode: assert
+        dry_run: true
+        sql: "SELECT * FROM `${GCP_PROJECT}.${BQ_DATASET_1}.fact_interaction`"
+        thresholds:
+          max_bytes_scanned: 1000000          # tiny fixture table, well under 1 MB

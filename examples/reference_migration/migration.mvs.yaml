@@ -1,0 +1,44 @@
+# Reference migration bundle — Mode-2 build-and-verify (the DEFAULT mode).
+#
+# The harness: (1) provisions a clean build dataset, (2) applies the CUT's artifacts
+# below VERBATIM (ddl -> load -> transform), (3) runs the verify suites against the
+# built result. Expectations are anchored to the SOURCE (legacy) ground truth via
+# source_map — never to the DDL — so a green is unforgeable.
+#
+#   GCP_PROJECT, BQ_LOCATION, SANDBOX_BUCKET, SOURCE_DATABASE  (env, §8)
+#   dmtemplate run examples/reference_migration/migration.mvs.yaml
+name: reference_ods_invoice_migration
+
+connections:
+  source: { engine: impala }      # legacy, for source-anchored parity
+  target: { engine: bigquery }
+
+migration:
+  # Ground truth: legacy table -> migrated table. The parity suites compare against this.
+  source_map:
+    - { source: "${SOURCE_DATABASE}.ods_invoice_acid", target: ods_invoice }
+
+  steps:
+    - { kind: ddl,       target: ods_invoice,     sql: sql/ddl/ods_invoice.sql }
+    - { kind: load,      target: ods_invoice_raw, from: "gs://${SANDBOX_BUCKET}/ods_invoice/*", format: PARQUET }
+    - { kind: transform, target: ods_invoice,     sql: sql/transform/ods_invoice.sql }
+
+suites:
+  # (B) the built target schema is correct
+  - pattern: schema_conformance
+    id: built-schema
+    target_dataset: "${BUILD_DATASET}"
+    tables:
+      - table: ods_invoice
+        columns:
+          - { name: invoice_id, type: INT64 }
+          - { name: issued_ts,  type: TIMESTAMP }
+          - { name: op,         type: STRING }
+
+  # (A) row counts match the legacy source (anchored to source_map, not the DDL)
+  - pattern: rowcount_parity
+    id: built-rowcount
+    source_database: "${SOURCE_DATABASE}"
+    target_dataset: "${BUILD_DATASET}"
+    tables:
+      - { source: ods_invoice_acid, target: ods_invoice, tolerance: "0" }

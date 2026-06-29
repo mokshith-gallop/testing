@@ -1,0 +1,33 @@
+# P0-3 NEGATIVE twin — wrong epoch encoding (the lying-column trap) + a one-cent
+# decimal corruption. The harness must FAIL both.
+name: p0_3_negative
+description: deliberately wrong encoding + corrupt decimal — harness must FAIL.
+
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+suites:
+  # WRONG: issued_sec actually holds MILLIS, but we declare seconds. Read as seconds
+  # the year is ~58000 -> the lying-column guard must fire for every row.
+  - pattern: epoch_conversion
+    id: epoch-wrong-encoding
+    source_database: "${SOURCE_DATABASE}"
+    target_dataset: "${BQ_DATASET_1}"
+    columns:
+      - source_table: ods_invoice_acid
+        source_column: issued_sec
+        source_encoding: seconds          # WRONG (it is millis)
+        target_table: ods_invoice
+        target_column: issued_ts
+        key: invoice_id
+        expect_year_between: [2020, 2030]
+
+  # WRONG: target ods_invoice_corrupt has invoice 5001 amount off by one cent.
+  - pattern: decimal_roundtrip
+    id: decimal-corrupt
+    source_database: "${SOURCE_DATABASE}"
+    target_dataset: "${BQ_DATASET_2}"
+    columns:
+      - { source_table: ods_invoice_acid, target_table: ods_invoice_corrupt,
+          key: invoice_id, columns: [amount] }

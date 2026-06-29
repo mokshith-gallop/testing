@@ -1,0 +1,19 @@
+# NEGATIVE twin — a committed baseline of 1 byte; the real scan exceeds it, so the
+# regression gate (0% tolerance) must FAIL.
+name: perf_regression_negative
+description: current scan exceeds a tiny committed baseline — regression must FAIL.
+
+connections:
+  target: { engine: bigquery }
+
+suites:
+  - pattern: query_performance
+    id: perf-regression-broken
+    queries:
+      - id: fact-regression-bad
+        mode: regression
+        dry_run: true
+        sql: "SELECT * FROM `${GCP_PROJECT}.${BQ_DATASET_1}.fact_interaction`"
+        baseline: "tests/perf/perf_baseline_bad.json"   # committed: bytes_scanned=1
+        tolerances:
+          bytes_scanned: "0%"

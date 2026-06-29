@@ -1,0 +1,19 @@
+# A-vs-B performance comparison (same-engine). Partition-pruned B must scan no more
+# than full-scan A — checked via free, deterministic dry-run bytes.
+name: perf_compare
+description: same-engine A/B — pruned query scans <= full query (BigQuery, dry-run).
+
+connections:
+  target: { engine: bigquery }
+
+suites:
+  - pattern: query_performance
+    id: perf-compare-same-engine
+    story_id: NBCS-PERF
+    queries:
+      - id: pruned-scans-no-more-than-full
+        mode: compare
+        a: { sql: "SELECT * FROM `${GCP_PROJECT}.${BQ_DATASET_1}.fact_interaction`", dry_run: true }
+        b: { sql: "SELECT * FROM `${GCP_PROJECT}.${BQ_DATASET_1}.fact_interaction` WHERE event_date = DATE '2026-06-01'", dry_run: true }
+        compare:
+          bytes_scanned: "b <= a"          # B (partition-pruned) <= A (full)

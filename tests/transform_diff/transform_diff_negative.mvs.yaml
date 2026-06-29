@@ -1,0 +1,28 @@
+# Negative twin — the migrated T is NOT equivalent to the legacy T: it silently drops
+# the op='D' group (WHERE op != 'D'), so the legacy oracle has a group the migrated
+# output lacks. transform_diff must FAIL ("rewrite NOT equivalent").
+name: transform_diff_invoice_rollup_negative
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+suites:
+  - pattern: transform_diff
+    id: invoice_rollup_buggy
+    given:
+      ods_invoice_raw:
+        columns:
+          - { name: invoice_id, type: INT64 }
+          - { name: amount,     type: NUMERIC, scale: 2 }
+          - { name: op,         type: STRING }
+        rows:
+          - { invoice_id: 5001, amount: "100.00", op: "I" }
+          - { invoice_id: 5002, amount: "50.00",  op: "I" }
+          - { invoice_id: 5003, amount: "200.50", op: "U" }
+          - { invoice_id: 5099, amount: "9.99",   op: "D" }
+    legacy_sql: |
+      SELECT op, COUNT(*) AS n, SUM(amount) AS total
+      FROM ods_invoice_raw GROUP BY op
+    migrated_sql: |
+      SELECT op, COUNT(*) AS n, SUM(amount) AS total
+      FROM ods_invoice_raw WHERE op != 'D' GROUP BY op

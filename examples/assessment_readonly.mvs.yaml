@@ -1,0 +1,44 @@
+# Read-only assessment of a REAL migration target — NO synthetic data, NO mutation.
+# Point the env vars at the customer's live datasets / Composer env and run it: every
+# pattern here only INSPECTS existing state. read_only: true makes the harness BLOCK
+# any mutating pattern (bulk_load / merge / egress), so this can't accidentally write
+# to production. This is how you validate a real environment in place.
+#
+#   GCP_PROJECT=... BQ_LOCATION=... BQ_DATASET_1=<their ODS/DM dataset>
+#   IMPALA_HOST=<their Impala> SOURCE_DATABASE=<their Hive db>
+#   COMPOSER_ENV=<their composer env> COMPOSER_REGION=<region>
+#   dmtemplate run examples/assessment_readonly.mvs.yaml
+name: assessment_readonly
+description: validate a live migration target in place (no seeding).
+read_only: true
+
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+suites:
+  # the deployed target schema is correct (types, partition/cluster, no Hive leftovers)
+  - pattern: schema_conformance
+    id: prod-schema
+    target_dataset: "${BQ_DATASET_1}"
+    source_database: "${SOURCE_DATABASE}"
+    tables:
+      - table: ods_invoice
+        columns:
+          - { name: invoice_id, type: INT64 }
+          - { name: amount, type: NUMERIC, scale: 2 }
+          - { name: issued_ts, type: TIMESTAMP }
+
+  # legacy vs migrated row counts on the REAL data (no seed — reads both sides as-is)
+  - pattern: rowcount_parity
+    id: prod-rowcounts
+    source_database: "${SOURCE_DATABASE}"
+    target_dataset: "${BQ_DATASET_1}"
+    tables:
+      - { source: ods_invoice_acid, target: ods_invoice, tolerance: "0" }
+
+  # the deployed Composer DAGs exist and parse cleanly (authoritative, in the real env)
+  - pattern: dag_structure
+    id: prod-dags
+    expect_dags: [nbcs_master_daily, nbcs_ods_dm_build]
+    max_import_errors: 0

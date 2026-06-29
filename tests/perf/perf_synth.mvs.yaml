@@ -1,0 +1,29 @@
+# Perf over the generated synthetic table: measure + a free dry-run bytes assert.
+name: perf_synth
+description: measure + assert perf on the synthetic perf_fact table.
+
+connections:
+  target: { engine: bigquery }
+
+suites:
+  - pattern: query_performance
+    id: perf-synth
+    story_id: NBCS-PERF
+    queries:
+      - id: synth-daily-agg
+        mode: measure
+        runs: 2
+        sql: >
+          SELECT channel, COUNT(*) c, SUM(amount) s
+          FROM `${GCP_PROJECT}.${BQ_DATASET_2}.perf_fact`
+          WHERE event_date = DATE '2026-06-01' GROUP BY channel
+
+      # partition-pruned scan stays well under a budget (clustering + partitioning work)
+      - id: synth-pruned-bytes
+        mode: assert
+        dry_run: true
+        sql: >
+          SELECT * FROM `${GCP_PROJECT}.${BQ_DATASET_2}.perf_fact`
+          WHERE event_date = DATE '2026-06-01'
+        thresholds:
+          max_bytes_scanned: 5000000          # one partition of a 50k-row table

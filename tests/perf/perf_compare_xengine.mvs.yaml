@@ -1,0 +1,26 @@
+# Cross-engine A-vs-B: legacy Impala query vs the migrated BigQuery query. Different
+# engines/hardware/formats make a hard "B faster than A" gate unfair, so this is a
+# REPORT (records the side-by-side numbers + b/a ratio), not a gate.
+name: perf_compare_xengine
+description: legacy(Impala) vs migrated(BigQuery) — report perf side-by-side.
+
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+suites:
+  - pattern: query_performance
+    id: legacy-vs-migrated
+    story_id: NBCS-CONSUMER-MIGRATION
+    queries:
+      - id: agg-legacy-vs-migrated
+        mode: compare
+        a:
+          engine: source
+          sql: "SELECT channel, COUNT(*) c FROM ${SOURCE_DATABASE}.fact_interaction GROUP BY channel"
+        b:
+          engine: target
+          sql: "SELECT channel, COUNT(*) c FROM `${GCP_PROJECT}.${BQ_DATASET_1}.fact_interaction` GROUP BY channel"
+        compare:
+          elapsed_ms: report
+          bytes_scanned: report

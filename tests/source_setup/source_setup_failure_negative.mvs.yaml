@@ -1,0 +1,26 @@
+# NEGATIVE (live): a source_setup DDL that can't apply must SURFACE — the harness run must NOT
+# PASS (it raises / ERRORs), and the build dataset provisioned before source_setup is still torn
+# down by the finally. Guards the resource-leak fix in build.setup_source + harness.run_mvs.
+name: source_setup_failure_negative
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+migration:
+  steps:
+    - { kind: ddl, sql_text: "CREATE TABLE ss_demo (id INT64)" }
+
+# fixture_bad.hql has a malformed CREATE (missing close paren) -> apply fails mid-setup.
+source_setup:
+  location_base: /tmp/dmt_src
+  ddl:
+    - tests/source_setup/fixture_bad.hql
+
+suites:
+  - pattern: schema_conformance
+    id: source-setup-failure-never-reached   # source_setup fails before any suite runs
+    target_dataset: "${BUILD_DATASET}"
+    tables:
+      - table: ss_demo
+        columns:
+          - { name: id, type: INT64 }

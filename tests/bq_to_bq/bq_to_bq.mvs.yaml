@@ -1,0 +1,55 @@
+# BigQuery -> BigQuery in-warehouse transform validation.
+# connections.source.engine = bigquery, so the parity patterns compare a seeded BQ
+# staging table against a BQ mart built by the migration's transform SQL — no Impala.
+name: bq_to_bq_transform
+description: validate an in-warehouse BQ staging -> mart ELT transform.
+
+connections:
+  source: { engine: bigquery }
+  target: { engine: bigquery }
+
+suites:
+  - pattern: rowcount_parity
+    id: elt-rowcount
+    story_id: NBCS-TRANSFORM
+    source_database: "${BQ_DATASET_2}"
+    target_dataset: "${BQ_DATASET_2}"
+    tables:
+      - { source: elt_staging, target: elt_mart, tolerance: "0" }
+
+  - pattern: fingerprint_parity
+    id: elt-fingerprint
+    story_id: NBCS-TRANSFORM
+    source_database: "${BQ_DATASET_2}"
+    target_dataset: "${BQ_DATASET_2}"
+    tables:
+      - source: elt_staging
+        target: elt_mart
+        key: id
+        columns: [id, channel, amount, event_ts]   # the transform preserves these 1:1
+
+  # Same parity, computed IN BigQuery (scale path — digest never leaves the warehouse;
+  # what DVT/reladiff do server-side). Needed for large tables where pulling rows to
+  # Python is infeasible.
+  - pattern: fingerprint_parity
+    id: elt-fingerprint-pushdown
+    story_id: NBCS-TRANSFORM
+    source_database: "${BQ_DATASET_2}"
+    target_dataset: "${BQ_DATASET_2}"
+    tables:
+      - source: elt_staging
+        target: elt_mart
+        columns: [id, channel, amount, event_ts]
+        scale: pushdown
+
+  - pattern: aggregate_parity
+    id: elt-aggregate
+    story_id: NBCS-TRANSFORM
+    source_database: "${BQ_DATASET_2}"
+    target_dataset: "${BQ_DATASET_2}"
+    tables:
+      - source: elt_staging
+        target: elt_mart
+        aggregates:
+          - { column: amount, fn: sum }
+          - { column: id, fn: count }

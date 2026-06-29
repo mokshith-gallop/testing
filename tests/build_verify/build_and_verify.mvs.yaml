@@ -1,0 +1,40 @@
+# Mode-2 build-and-verify golden (the spine).
+# The harness applies the CUT's artifacts (seed + transform) to a CLEAN build dataset,
+# then the suite verifies the built schema. No read_only (build needs to write).
+# ${BUILD_DATASET} -> dmt_build (default), provisioned + reset at the start of the run.
+name: build_and_verify_ods_invoice
+connections:
+  target: { engine: bigquery }
+
+migration:
+  source_map:
+    - { source: hive.ods_invoice_acid, target: ods_invoice }
+  steps:
+    # The "load" stands in here as an inline seed (no GCS needed for the self-test);
+    # a real bundle would use { kind: load, from: gs://..., format: PARQUET }.
+    - kind: ddl
+      target: ods_invoice_raw
+      sql_text: |
+        CREATE OR REPLACE TABLE ods_invoice_raw AS
+        SELECT * FROM UNNEST([
+          STRUCT(5001 AS invoice_id, 1780272000000 AS issued_ms, NUMERIC '100.00' AS amount, 'I' AS op),
+          STRUCT(5003,               1780381800000,               NUMERIC '200.50',           'U'),
+          STRUCT(5099,               1780381800000,               NUMERIC '9.99',             'D')
+        ]);
+    # The CUT's transform, applied verbatim (epoch->timestamp, drop deletes).
+    - kind: transform
+      target: ods_invoice
+      sql: fixtures/sql/transform/ods_invoice_unit.sql
+
+suites:
+  # Verify the BUILT target schema (outcome check on what the steps produced).
+  - pattern: schema_conformance
+    id: built-schema
+    target_dataset: "${BUILD_DATASET}"
+    tables:
+      - table: ods_invoice
+        columns:
+          # Proves the transform built correct types from the seed. (NUMERIC scale
+          # strictness is exercised in tests/schema; a CTAS NUMERIC is unparameterized.)
+          - { name: invoice_id, type: INT64 }
+          - { name: issued_ts,  type: TIMESTAMP }

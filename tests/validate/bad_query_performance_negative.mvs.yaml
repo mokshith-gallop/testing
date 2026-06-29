@@ -1,0 +1,12 @@
+# Negative fixture for `lib.cli validate` — a query_performance suite that MISUSES the pattern:
+# an `assert` query with NO `thresholds`, plus a non-existent `expect_error` field. Schema-INVALID
+# on purpose; `validate` must reject it WITHOUT a DB. Reproduces the AC9 authoring error.
+# Named *_negative so `reconcile` never tries to RUN it.
+name: bad_query_performance
+connections:
+  target: { engine: bigquery }
+suites:
+  - pattern: query_performance
+    id: bad-perf
+    queries:
+      - { id: q1, mode: assert, sql: "SELECT 1", expect_error: false }

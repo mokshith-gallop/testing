@@ -1,0 +1,43 @@
+# P0-1 NEGATIVE twin — every assertion below is deliberately WRONG against the
+# (correct) live target. The harness must FAIL each, proving the checks bite. A
+# no-op test would pass this; a real one fails it. (SPEC §10 negative twins.)
+name: schema_conformance_negative
+description: deliberately broken expectations — harness must report FAIL.
+
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+suites:
+  - pattern: schema_conformance
+    id: dm-schema-broken
+    target_dataset: "${BQ_DATASET_1}"
+    source_database: "${SOURCE_DATABASE}"
+    expect_table_count: 99                    # WRONG: dataset has 3 tables
+    tables:
+      - table: dim_customer
+        source_table: dim_customer
+        partition_by: balance                 # WRONG: dim_customer is not partitioned
+        cluster_by: [segment]                 # WRONG: not clustered
+        columns:
+          - { name: balance,    type: INT64 }              # WRONG: it is NUMERIC(12,2)
+          - { name: is_current, type: STRING }             # WRONG: it is BOOL
+          - { name: nonexistent_col, type: STRING }        # WRONG: column does not exist
+          - { name: cust_key,   type: INT64, source_type: STRING }  # WRONG: legacy is BIGINT->INT64
+      - table: ghost_table                    # WRONG: table does not exist
+        columns:
+          - { name: x, type: INT64 }
+      - table: fact_interaction
+        expect_object_type: VIEW              # WRONG: it is a TABLE, not a VIEW
+        table_options:
+          partition_expiration_days: 99         # WRONG: it is 3650
+          require_partition_filter: true        # WRONG: it is false
+          labels: { layer: WRONG }              # WRONG: layer is dm
+        columns:
+          - { name: interaction_id, type: INT64 }
+          - { name: amount, type: NUMERIC }     # WRONG: a NUMERIC column must declare its scale
+      - table: team_roster
+        columns:
+          # WRONG: the struct's `level` is INT64 in the target, not STRING — the harness
+          # must look INSIDE the array/struct and catch this.
+          - { name: members, type: "ARRAY<STRUCT<name STRING, level STRING>>" }

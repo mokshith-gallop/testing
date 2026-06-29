@@ -1,0 +1,27 @@
+# source_setup NEGATIVE twin — same standup, but the declared source_type for `id`
+# disagrees with the real legacy DDL (legacy is BIGINT, spec says STRING), so the cross-check
+# against the stood-up source must FAIL. Proves source_setup feeds a REAL cross-check, not a
+# no-op that always passes.
+name: source_setup_negative
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+migration:
+  steps:
+    - { kind: ddl, sql_text: "CREATE TABLE ss_demo (id INT64, nm STRING, created_ts INT64)" }
+
+source_setup:
+  ddl:
+    - tests/source_setup/fixture_legacy.hql
+
+suites:
+  - pattern: schema_conformance
+    id: source-setup-negative
+    target_dataset: "${BUILD_DATASET}"
+    source_database: dmt_legacy
+    tables:
+      - table: ss_demo
+        source_table: ss_demo
+        columns:
+          - { name: id, type: INT64, source_type: STRING }   # WRONG: legacy id is BIGINT -> FAIL

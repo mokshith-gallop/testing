@@ -1,0 +1,27 @@
+# Impala query-performance — same pattern, target engine = impala. Stats come from
+# the runtime profile (no Job API, no dry-run): common core (bytes_scanned, elapsed_ms)
+# + Impala extras (peak_memory, cpu_ms).
+name: perf_impala
+description: measure + assert Impala query performance from the runtime profile.
+
+connections:
+  target: { engine: impala }
+
+suites:
+  - pattern: query_performance
+    id: perf-impala
+    story_id: NBCS-PERF
+    queries:
+      - id: fact-agg-measure-impala
+        mode: measure
+        runs: 2
+        sql: >
+          SELECT channel, COUNT(*) c, SUM(amount) s
+          FROM ${SOURCE_DATABASE}.fact_interaction GROUP BY channel
+
+      - id: fact-bytes-budget-impala
+        mode: assert
+        sql: "SELECT COUNT(*) FROM ${SOURCE_DATABASE}.fact_interaction"
+        thresholds:
+          max_bytes_scanned: 1000000          # tiny fixture table
+          max_elapsed_ms: 60000               # generous wall-clock budget

@@ -1,0 +1,87 @@
+# P0-1 golden spec — Schema/DDL conformance (pattern 7, Axis B).
+#
+# The execution agent emits THIS (declarative), not Python. The harness introspects
+# the live BigQuery target and asserts it against the expected schema, optionally
+# cross-checking the legacy type mapping. Dataset/db names come from env (§8) so the
+# spec is portable across the per-agent sandboxes.
+name: schema_conformance_golden
+description: NBCS fixture — target datasets exist correctly before any data flows.
+
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+suites:
+  # One canonical dataset holding all migrated tables (the customer decides how many
+  # datasets their migration uses — the harness validates whichever the spec names).
+  - pattern: schema_conformance
+    id: canonical-schema
+    story_id: NBCS-TARGET-SCHEMA
+    target_dataset: "${BQ_DATASET_1}"
+    source_database: "${SOURCE_DATABASE}"
+    expect_table_count: 6
+    tables:
+      - table: dim_agent
+        source_table: dim_agent
+        expect_object_type: TABLE
+        columns:
+          # natural spellings must normalize: INTEGER -> INT64 (target), BIGINT -> INT64 (source)
+          - { name: agent_id,   type: INTEGER, source_type: BIGINT }
+          - { name: agent_name, type: STRING, source_type: STRING }
+          - { name: team,       type: STRING }
+
+      - table: dim_customer
+        source_table: dim_customer
+        columns:
+          - { name: cust_key,   type: INT64,   source_type: INT64 }
+          - { name: contact_id, type: INT64 }
+          - { name: full_name,  type: STRING }
+          - { name: segment,    type: STRING }
+          - { name: balance,    type: NUMERIC, scale: 2, source_type: NUMERIC }   # DECIMAL(12,2) -> NUMERIC(12,2)
+          - { name: eff_from,   type: TIMESTAMP }
+          - { name: eff_to,     type: TIMESTAMP }
+          - { name: is_current, type: BOOL,    source_type: BOOL }
+          - { name: row_hash,   type: STRING }
+
+      - table: fact_interaction
+        source_table: fact_interaction
+        # Multi-col Hive partition (event_year, event_month) collapsed to a single
+        # BQ partition + clustering.
+        partition_by: event_date
+        cluster_by: [contact_id]
+        table_options:
+          partition_expiration_days: 3650        # retention AC (pattern 20)
+          require_partition_filter: false
+          labels: { layer: dm, pii: "false" }
+        columns:
+          - { name: interaction_id, type: INT64 }
+          - { name: contact_id,     type: INT64 }
+          - { name: channel,        type: STRING }
+          - { name: duration_sec,   type: INT64,   source_type: INT64 }   # Hive INT -> INT64
+          - { name: amount,         type: NUMERIC, scale: 2 }
+          - { name: event_ts,       type: TIMESTAMP }
+          - { name: event_date,     type: DATE }                          # new partition column
+
+      - table: ods_invoice
+        source_table: ods_invoice_acid
+        columns:
+          - { name: invoice_id, type: INT64 }
+          - { name: contact_id, type: INT64 }
+          - { name: amount,     type: NUMERIC, scale: 2 }
+          # epoch conversion + rename: legacy issued_sec (BIGINT millis) -> issued_ts (TIMESTAMP)
+          - { name: issued_ts,  type: TIMESTAMP, source_name: issued_sec, source_type: INT64 }
+          - { name: op,         type: STRING }
+
+      # team_roster: nested complex type — the harness validates the types INSIDE the
+      # array/struct (declare the full nested shape, else only the outer ARRAY is checked).
+      - table: team_roster
+        columns:
+          - { name: team,    type: STRING }
+          - { name: members, type: "ARRAY<STRUCT<name STRING, level INT64>>" }
+
+      # event_audit: ingestion-time partitioning surfaces as the _PARTITIONTIME pseudo-column.
+      - table: event_audit
+        partition_by: _PARTITIONTIME
+        columns:
+          - { name: event_id, type: INTEGER }
+          - { name: note,     type: STRING }

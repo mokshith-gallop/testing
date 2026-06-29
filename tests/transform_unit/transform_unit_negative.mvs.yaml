@@ -1,0 +1,32 @@
+# Negative twin — a BUGGY transform must FAIL the unit test.
+# The epoch conversion is correct, but the T FORGETS the op filter, so it keeps the
+# op='D' delete row. The output multiset has an unexpected row AND rowcount is 3, not 2.
+name: transform_unit_ods_invoice_negative
+connections:
+  target: { engine: bigquery }
+
+suites:
+  - pattern: transform_unit
+    id: ods_invoice_buggy
+    transform_sql: |
+      CREATE OR REPLACE TABLE ods_invoice AS
+      SELECT invoice_id, amount, TIMESTAMP_MILLIS(issued_ms) AS issued_ts
+      FROM ods_invoice_raw
+    given:
+      ods_invoice_raw:
+        columns:
+          - { name: invoice_id, type: INT64 }
+          - { name: issued_ms,  type: INT64 }
+          - { name: amount,     type: NUMERIC }
+          - { name: op,         type: STRING }
+        rows:
+          - { invoice_id: 5001, issued_ms: 1780272000000, amount: "100.00", op: "I" }
+          - { invoice_id: 5003, issued_ms: 1780381800000, amount: "200.50", op: "U" }
+          - { invoice_id: 5099, issued_ms: 1780381800000, amount: "9.99",   op: "D" }
+    expect:
+      table: ods_invoice
+      rows:
+        - { invoice_id: 5001, amount: "100.00", issued_ts: "2026-06-01T00:00:00Z" }
+        - { invoice_id: 5003, amount: "200.50", issued_ts: "2026-06-02T06:30:00Z" }
+      assert:
+        - { rowcount: 2 }

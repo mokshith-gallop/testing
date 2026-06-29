@@ -1,0 +1,31 @@
+# transform_unit golden — given -> T -> expect, hermetic in BigQuery.
+# Seeds a tiny ods_invoice_raw, runs the CUT's transform VERBATIM, asserts the output
+# rows (canonicalized) + properties. The op='D' row must be filtered out by the T.
+name: transform_unit_ods_invoice
+connections:
+  target: { engine: bigquery }
+
+suites:
+  - pattern: transform_unit
+    id: ods_invoice_epoch_filter
+    transform: fixtures/sql/transform/ods_invoice_unit.sql
+    given:
+      ods_invoice_raw:
+        columns:
+          - { name: invoice_id, type: INT64 }
+          - { name: issued_ms,  type: INT64 }
+          - { name: amount,     type: NUMERIC }
+          - { name: op,         type: STRING }
+        rows:
+          - { invoice_id: 5001, issued_ms: 1780272000000, amount: "100.00", op: "I" }   # 2026-06-01 00:00:00Z
+          - { invoice_id: 5003, issued_ms: 1780381800000, amount: "200.50", op: "U" }   # 2026-06-02 06:30:00Z
+          - { invoice_id: 5099, issued_ms: 1780381800000, amount: "9.99",   op: "D" }   # dropped (delete)
+    expect:
+      table: ods_invoice
+      rows:
+        - { invoice_id: 5001, amount: "100.00", issued_ts: "2026-06-01T00:00:00Z" }
+        - { invoice_id: 5003, amount: "200.50", issued_ts: "2026-06-02T06:30:00Z" }
+      assert:
+        - { rowcount: 2 }
+        - { unique: [invoice_id] }
+        - { no_nulls: [issued_ts] }

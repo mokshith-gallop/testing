@@ -1,0 +1,23 @@
+# P0-6 NEGATIVE twin — converted queries that diverge from legacy. Harness must FAIL.
+name: p0_6_negative
+description: diverging converted queries — harness must FAIL.
+
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+suites:
+  - pattern: query_parity
+    id: broken-queries
+    queries:
+      # rowset divergence: target filters to one channel -> different result set
+      - id: rowset_broken
+        mode: rowset
+        source_sql: "SELECT channel, COUNT(*) AS n FROM ${SOURCE_DATABASE}.fact_interaction GROUP BY channel"
+        target_sql: "SELECT channel, COUNT(*) AS n FROM `${GCP_PROJECT}.${BQ_DATASET_1}.fact_interaction` WHERE channel='voice' GROUP BY channel"
+      # scalar divergence beyond tolerance
+      - id: scalar_broken
+        mode: scalar
+        tolerance: "0"
+        source_sql: "SELECT COUNT(*) AS n FROM ${SOURCE_DATABASE}.fact_interaction"
+        target_sql: "SELECT COUNT(*) AS n FROM `${GCP_PROJECT}.${BQ_DATASET_1}.fact_interaction` WHERE contact_id < 0"

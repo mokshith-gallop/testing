@@ -1,0 +1,56 @@
+# P0-3 golden spec — epoch conversion (pattern 5) + DECIMAL roundtrip (pattern 6).
+name: p0_3_encoding
+description: NBCS fixture — epoch (lying millis) + out-of-range NULL + DECIMAL roundtrip.
+
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+suites:
+  # pattern 5 — happy path: issued_sec holds MILLIS under a *_sec name; the migrated
+  # issued_ts must be the correctly-converted instant, and the year must land in 2020-2030
+  # (the lying-column guard: read as seconds it would be ~year 58000).
+  - pattern: epoch_conversion
+    id: epoch-invoice
+    story_id: NBCS-TRANSFORM
+    source_database: "${SOURCE_DATABASE}"
+    target_dataset: "${BQ_DATASET_1}"
+    columns:
+      - source_table: ods_invoice_acid
+        source_column: issued_sec
+        source_encoding: millis
+        target_table: ods_invoice
+        target_column: issued_ts
+        key: invoice_id
+        expect_year_between: [2020, 2030]
+
+  # pattern 5 — edge: out-of-range/negative epochs must become NULL on the target and
+  # be recorded in _dq_audit (not error).
+  - pattern: epoch_conversion
+    id: epoch-edge
+    story_id: NBCS-TRANSFORM
+    source_database: "${SOURCE_DATABASE}"
+    target_dataset: "${BQ_DATASET_2}"
+    columns:
+      - source_table: ods_epoch_edge
+        source_column: raw_sec
+        source_encoding: millis
+        target_table: ods_epoch_edge
+        target_column: converted_ts
+        key: id
+        expect_year_between: [2020, 2030]
+        sane_year_range: [1970, 2100]
+        out_of_range_is_null: true
+        audit_table: _dq_audit
+
+  # pattern 6 — DECIMAL(12,2) values roundtrip exactly (zero, negative, large).
+  - pattern: decimal_roundtrip
+    id: decimal-roundtrip
+    story_id: NBCS-EXTRACT-LOAD
+    source_database: "${SOURCE_DATABASE}"
+    target_dataset: "${BQ_DATASET_1}"
+    columns:
+      - { source_table: dim_customer, target_table: dim_customer, key: cust_key, columns: [balance] }
+      - { source_table: fact_interaction, target_table: fact_interaction, key: interaction_id, columns: [amount] }
+      - { source_table: ods_invoice_acid, target_table: ods_invoice, key: invoice_id,
+          columns: [amount], target_dataset: "${BQ_DATASET_1}" }

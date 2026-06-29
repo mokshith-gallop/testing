@@ -1,0 +1,28 @@
+# P0-2 NEGATIVE twin — wrong landed count, wrong partition column, and a row-count
+# mismatch beyond tolerance. The harness must FAIL each.
+name: p0_2_negative
+description: deliberately broken load/parity expectations — harness must FAIL.
+
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+suites:
+  - pattern: bulk_load
+    id: load-broken
+    target_dataset: "${BQ_DATASET_2}"
+    loads:
+      - { table: _neg_load_json, format: NEWLINE_DELIMITED_JSON, expected_count: 99,   # WRONG: file has 8
+          uri: "gs://${SANDBOX_BUCKET}/p0-2/fact/json/*" }
+      - { table: _neg_load_hive, format: NEWLINE_DELIMITED_JSON, expected_count: 8,
+          uri: "gs://${SANDBOX_BUCKET}/p0-2/fact/hive/*",
+          hive_partitioning: { mode: AUTO,
+                               source_uri_prefix: "gs://${SANDBOX_BUCKET}/p0-2/fact/hive/",
+                               expect_partition_column: nonexistent_part } }          # WRONG column
+
+  - pattern: rowcount_parity
+    id: rowcount-broken
+    source_database: "${SOURCE_DATABASE}"
+    target_dataset: "${BQ_DATASET_1}"
+    tables:
+      - { source: dim_agent, target: dim_agent, tolerance: "0", target_filter: "agent_id < 0" }  # tgt=0 vs src=3

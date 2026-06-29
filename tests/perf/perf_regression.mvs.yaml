@@ -1,0 +1,21 @@
+# Regression mode: compare current perf to a stored baseline within tolerances.
+# First run establishes the baseline (PASS); later runs gate on drift. Uses dry-run
+# bytes (deterministic + free) so the 0% tolerance is meaningful.
+name: perf_regression
+description: gate query perf against a stored baseline (measure -> baseline -> gate).
+
+connections:
+  target: { engine: bigquery }
+
+suites:
+  - pattern: query_performance
+    id: perf-regression
+    story_id: NBCS-PERF
+    queries:
+      - id: fact-regression
+        mode: regression
+        dry_run: true
+        sql: "SELECT * FROM `${GCP_PROJECT}.${BQ_DATASET_1}.fact_interaction`"
+        baseline: "${PERF_BASELINE:-.report/perf_baseline.json}"   # path; established on first run
+        tolerances:
+          bytes_scanned: "0%"                 # deterministic -> must not grow at all

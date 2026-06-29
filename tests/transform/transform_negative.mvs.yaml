@@ -1,0 +1,47 @@
+# P0-5 NEGATIVE twin — broken SCD-2 (two-current, gap, wrong hash), a non-idempotent
+# append 'merge', and an impossible orphan cap. Harness must FAIL each.
+name: p0_5_negative
+description: broken transforms — harness must FAIL.
+
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+suites:
+  - pattern: scd2_continuity
+    id: scd2-broken
+    target_dataset: "${BQ_DATASET_2}"
+    tables:
+      - target: dim_customer_broken
+        entity_key: contact_id
+        eff_from: eff_from
+        eff_to: eff_to
+        current_flag: is_current
+        terminal_eff_to: "9999-12-31"
+        row_hash: row_hash
+        hash_columns: [contact_id, full_name, segment]
+
+  - pattern: merge_idempotency
+    id: merge-nonidempotent
+    target_dataset: "${BQ_DATASET_2}"
+    merges:
+      - target: mrg_target_bad
+        key_columns: [invoice_id]
+        compare_columns: [invoice_id, contact_id, amount]
+        # An append, not a merge: re-running grows the table -> NOT idempotent.
+        merge_sql: |
+          INSERT INTO `${GCP_PROJECT}.${BQ_DATASET_2}.mrg_target_bad`
+            (invoice_id, contact_id, amount)
+          SELECT invoice_id, contact_id, amount
+          FROM `${GCP_PROJECT}.${BQ_DATASET_2}.mrg_delta` WHERE op = 'I'
+
+  - pattern: fk_orphan
+    id: fk-impossible-cap
+    source_database: "${SOURCE_DATABASE}"
+    target_dataset: "${BQ_DATASET_1}"
+    joins:
+      - child: fact_interaction
+        child_key: contact_id
+        parent: dim_customer
+        parent_key: contact_id
+        max_orphan_rate: 0     # 12.5% > 0 -> FAIL

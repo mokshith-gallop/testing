@@ -1,0 +1,18 @@
+# NEGATIVE twin — identical A and B, but demand B be >=2x cheaper. b==a, so the
+# "b <= a*0.5" comparison must FAIL.
+name: perf_compare_negative
+description: impossible speedup demand on identical queries — compare must FAIL.
+
+connections:
+  target: { engine: bigquery }
+
+suites:
+  - pattern: query_performance
+    id: perf-compare-broken
+    queries:
+      - id: impossible-speedup
+        mode: compare
+        a: { sql: "SELECT * FROM `${GCP_PROJECT}.${BQ_DATASET_1}.fact_interaction`", dry_run: true }
+        b: { sql: "SELECT * FROM `${GCP_PROJECT}.${BQ_DATASET_1}.fact_interaction`", dry_run: true }
+        compare:
+          bytes_scanned: "b <= a * 0.5"    # b == a, so not <= a/2 -> FAIL

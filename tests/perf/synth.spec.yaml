@@ -1,0 +1,16 @@
+# Synthetic perf table for BigQuery — generated in-warehouse via GENERATE_ARRAY.
+# Row count is tiered by PERF_SCALE (small=1e6 | medium=1e8 | large=1e9 | <int>).
+dataset: "${BQ_DATASET_2}"
+expire_hours: 6
+max_bytes_billed: 50000000000          # 50 GB cost guard on generation
+tables:
+  - name: perf_fact
+    rows: "${PERF_SCALE:-small}"
+    partition_by: event_date
+    cluster_by: [customer_id]
+    columns:
+      - { name: id,          gen: sequence }
+      - { name: customer_id, gen: "MOD(id, 1000000)" }
+      - { name: amount, type: NUMERIC, gen: "ROUND(RAND() * 1000, 2)" }
+      - { name: event_date,  gen: "DATE_ADD(DATE '2026-01-01', INTERVAL MOD(id, 365) DAY)" }
+      - { name: channel,     gen: "['voice','chat','email'][OFFSET(MOD(id, 3))]" }

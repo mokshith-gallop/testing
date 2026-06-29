@@ -1,0 +1,28 @@
+# P0-7 golden spec — egress parity (pattern 16). The migration EXPORTs the target
+# ods_invoice to GCS; the harness reads it back and asserts byte-identity (after
+# canonical sort) + control totals vs the legacy rows.
+name: p0_7_egress
+description: NBCS fixture — outbound GCS export matches legacy field-for-field.
+
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+suites:
+  - pattern: egress_parity
+    id: invoice-egress
+    story_id: NBCS-EGRESS
+    source_database: "${SOURCE_DATABASE}"
+    exports:
+      - id: invoice_export
+        columns: [invoice_id, contact_id, amount]
+        control_total_column: amount
+        source_sql: >
+          SELECT invoice_id, contact_id, amount
+          FROM ${SOURCE_DATABASE}.ods_invoice_acid
+        target_export_sql: >
+          EXPORT DATA OPTIONS(
+            uri='gs://${SANDBOX_BUCKET}/p0-7/invoice/*.json', format='JSON', overwrite=true) AS
+          SELECT invoice_id, contact_id, amount
+          FROM `${GCP_PROJECT}.${BQ_DATASET_1}.ods_invoice`
+        export_uri_prefix: "gs://${SANDBOX_BUCKET}/p0-7/invoice/"

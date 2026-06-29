@@ -1,0 +1,39 @@
+# NEGATIVE twin — validate against elt_mart_bad (one amount silently corrupted in
+# the transform). Fingerprint + aggregate parity must FAIL; rowcount still matches.
+name: bq_to_bq_negative
+description: corrupted BQ->BQ transform — fingerprint + aggregate must FAIL.
+
+connections:
+  source: { engine: bigquery }
+  target: { engine: bigquery }
+
+suites:
+  - pattern: fingerprint_parity
+    id: elt-fingerprint-bad
+    source_database: "${BQ_DATASET_2}"
+    target_dataset: "${BQ_DATASET_2}"
+    tables:
+      - source: elt_staging
+        target: elt_mart_bad
+        key: id
+        columns: [id, channel, amount, event_ts]
+
+  - pattern: fingerprint_parity
+    id: elt-fingerprint-pushdown-bad
+    source_database: "${BQ_DATASET_2}"
+    target_dataset: "${BQ_DATASET_2}"
+    tables:
+      - source: elt_staging
+        target: elt_mart_bad
+        columns: [id, channel, amount, event_ts]
+        scale: pushdown          # in-warehouse digest must also catch the corruption
+
+  - pattern: aggregate_parity
+    id: elt-aggregate-bad
+    source_database: "${BQ_DATASET_2}"
+    target_dataset: "${BQ_DATASET_2}"
+    tables:
+      - source: elt_staging
+        target: elt_mart_bad
+        aggregates:
+          - { column: amount, fn: sum }

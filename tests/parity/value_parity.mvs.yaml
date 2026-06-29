@@ -1,0 +1,67 @@
+# P0-4 golden spec — aggregate-checksum parity (pattern 2) + order-independent
+# full-row fingerprint parity (pattern 3).
+name: p0_4_value_parity
+description: NBCS fixture — value parity (aggregates + full-row fingerprints) cross-engine.
+
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+suites:
+  - pattern: aggregate_parity
+    id: dm-aggregates
+    story_id: NBCS-TRANSFORM
+    source_database: "${SOURCE_DATABASE}"
+    target_dataset: "${BQ_DATASET_1}"
+    tables:
+      - source: fact_interaction
+        target: fact_interaction
+        aggregates:
+          - { column: amount, fn: sum, tolerance: "0.01" }
+          - { column: duration_sec, fn: sum, tolerance: "0" }
+          - { column: channel, fn: count_distinct, tolerance: "0" }
+          - { column: event_ts, fn: min, tolerance: "1" }     # ±1s
+          - { column: event_ts, fn: max, tolerance: "1" }
+      - source: dim_customer
+        target: dim_customer
+        aggregates:
+          - { column: balance, fn: sum, tolerance: "0.01" }
+          - { column: segment, fn: count_distinct, tolerance: "0" }
+          - { column: cust_key, fn: count, tolerance: "0" }
+
+  - pattern: fingerprint_parity
+    id: dm-fingerprints
+    story_id: NBCS-BACKFILL
+    source_database: "${SOURCE_DATABASE}"
+    target_dataset: "${BQ_DATASET_1}"
+    tables:
+      - source: dim_agent
+        target: dim_agent
+        key: agent_id
+        columns: [agent_id, agent_name, team]
+      - source: dim_customer
+        target: dim_customer
+        key: cust_key
+        columns: [cust_key, contact_id, full_name, segment, balance, eff_from, eff_to, is_current, row_hash]
+      - source: fact_interaction      # event_date is target-only; fingerprint the shared columns
+        target: fact_interaction
+        key: interaction_id
+        columns: [interaction_id, contact_id, channel, duration_sec, amount, event_ts]
+
+  # pattern 3 AT SCALE — identical parity computed IN the warehouses (one aggregate
+  # query per side, no row egress), cross-engine Impala<->BigQuery via md5(canonical
+  # row). This is the path for billion-row tables.
+  - pattern: fingerprint_parity
+    id: dm-fingerprints-pushdown
+    story_id: NBCS-BACKFILL
+    source_database: "${SOURCE_DATABASE}"
+    target_dataset: "${BQ_DATASET_1}"
+    tables:
+      - source: dim_customer
+        target: dim_customer
+        columns: [cust_key, contact_id, full_name, segment, balance, eff_from, eff_to, is_current, row_hash]
+        scale: pushdown
+      - source: fact_interaction
+        target: fact_interaction
+        columns: [interaction_id, contact_id, channel, duration_sec, amount, event_ts]
+        scale: pushdown

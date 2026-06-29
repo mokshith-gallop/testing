@@ -1,0 +1,17 @@
+# NEGATIVE twin — an impossible bytes budget; the assert must FAIL.
+name: perf_negative
+description: bytes budget of 1 byte — harness must FAIL the perf assertion.
+
+connections:
+  target: { engine: bigquery }
+
+suites:
+  - pattern: query_performance
+    id: perf-broken
+    queries:
+      - id: fact-scan-too-tight
+        mode: assert
+        dry_run: true
+        sql: "SELECT * FROM `${GCP_PROJECT}.${BQ_DATASET_1}.fact_interaction`"
+        thresholds:
+          max_bytes_scanned: 1                # 1 byte -> FAIL

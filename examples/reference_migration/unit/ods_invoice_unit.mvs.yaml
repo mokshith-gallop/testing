@@ -1,0 +1,32 @@
+# Reference UNIT test — given -> T -> expect, hermetic (BigQuery only, ~$0, seconds).
+# Seeds a tiny ods_invoice_raw, runs the SAME transform artifact the migration uses,
+# asserts the output. `sql:` is the canonical path key (= the CUT's artifact file).
+name: reference_ods_invoice_unit
+connections:
+  target: { engine: bigquery }
+
+suites:
+  - pattern: transform_unit
+    id: ods_invoice_transform
+    sql: examples/reference_migration/sql/transform/ods_invoice.sql
+    given:
+      ods_invoice_raw:
+        columns:
+          - { name: invoice_id, type: INT64 }
+          - { name: contact_id, type: INT64 }
+          - { name: issued_ms,  type: INT64 }
+          - { name: amount,     type: NUMERIC, scale: 2 }
+          - { name: op,         type: STRING }
+        rows:
+          - { invoice_id: 5001, contact_id: 101, issued_ms: 1780272000000, amount: "100.00", op: "i" }
+          - { invoice_id: 5003, contact_id: 103, issued_ms: 1780381800000, amount: "200.50", op: "U" }
+          - { invoice_id: 5099, contact_id: 104, issued_ms: 1780381800000, amount: "9.99",   op: "D" }
+    expect:
+      table: ods_invoice
+      rows:    # op lower-cased 'i' -> 'I' kept; 'D' dropped; epoch -> timestamp
+        - { invoice_id: 5001, op: "I", issued_ts: "2026-06-01T00:00:00Z" }
+        - { invoice_id: 5003, op: "U", issued_ts: "2026-06-02T06:30:00Z" }
+      assert:
+        - { rowcount: 2 }
+        - { unique: [invoice_id] }
+        - { no_nulls: [issued_ts, op] }

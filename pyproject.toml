@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dmtemplate"
+version = "0.1.0"
+description = "Declarative data-migration validation harness (legacy Hive/Impala -> BigQuery)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+
+# Core: harness + the two engines the P0 spine needs.
+dependencies = [
+    "google-cloud-bigquery>=3.20",
+    "google-cloud-storage>=2.16",
+    "impyla>=0.19",          # Impala (:21050) + Hive (:10000) over HS2, NoSASL
+    "PyYAML>=6",
+    "jsonschema>=4",
+    "python-dotenv>=1",
+]
+
+[project.optional-dependencies]
+# Axis-A parity engines (SPEC: DVT verify + reladiff localize). Optional so the
+# core harness installs without them; lib/parity.py degrades to our own validator.
+parity = [
+    "google-pso-data-validator>=6.0",
+    "reladiff>=0.1",
+]
+# Federated / egress RDBMS drivers (High tier, not P0).
+rdbms = ["oracledb>=2", "pyodbc>=5", "pymysql>=1.1", "psycopg2-binary>=2.9"]
+# File / PGP intake (High tier).
+fileio = ["paramiko>=3", "python-gnupg>=0.5"]
+dev = ["pytest>=8", "pytest-json-report>=1.5"]
+
+[project.scripts]
+dmtemplate = "lib.cli:main"
+
+[tool.setuptools]
+packages = ["lib"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "live_bq: requires a live BigQuery sandbox",
+    "live_impala: requires a live Impala/Hive VM",
+    "negative: a negative-twin test that asserts the harness correctly FAILS",
+]
+filterwarnings = ["ignore::FutureWarning", "ignore::DeprecationWarning"]

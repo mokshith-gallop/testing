@@ -1,0 +1,51 @@
+# P0-6 golden spec — cross-engine query/view parity (pattern 4). Each query pair is
+# the legacy SQL and its converted BigQuery form; the harness runs both and compares.
+# Covers the special cases from SPEC §5#4: APPROX_COUNT_DISTINCT (±tolerance), regex
+# classification equality, and CROSS JOIN row preservation.
+name: p0_6_query_parity
+description: NBCS fixture — converted SQL identical cross-engine.
+
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+suites:
+  - pattern: query_parity
+    id: consumer-queries
+    story_id: NBCS-CONSUMER-MIGRATION
+    queries:
+      # rowset parity: per-channel count + summed amount
+      - id: channel_rollup
+        mode: rowset
+        source_sql: >
+          SELECT channel, COUNT(*) AS n, SUM(amount) AS amt
+          FROM ${SOURCE_DATABASE}.fact_interaction GROUP BY channel
+        target_sql: >
+          SELECT channel, COUNT(*) AS n, SUM(amount) AS amt
+          FROM `${GCP_PROJECT}.${BQ_DATASET_1}.fact_interaction` GROUP BY channel
+
+      # APPROX distinct: Impala NDV vs BigQuery APPROX_COUNT_DISTINCT (±5%, not exact)
+      - id: approx_distinct_contacts
+        mode: scalar
+        tolerance: "5%"
+        source_sql: "SELECT NDV(contact_id) AS d FROM ${SOURCE_DATABASE}.fact_interaction"
+        target_sql: "SELECT APPROX_COUNT_DISTINCT(contact_id) AS d FROM `${GCP_PROJECT}.${BQ_DATASET_1}.fact_interaction`"
+
+      # regex classification equality: Impala RLIKE vs BigQuery REGEXP_CONTAINS
+      - id: regex_classification
+        mode: rowset
+        source_sql: >
+          SELECT CASE WHEN channel RLIKE '^(voice|chat)$' THEN 'realtime' ELSE 'async' END AS cls,
+                 COUNT(*) AS n
+          FROM ${SOURCE_DATABASE}.fact_interaction GROUP BY 1
+        target_sql: >
+          SELECT CASE WHEN REGEXP_CONTAINS(channel, r'^(voice|chat)$') THEN 'realtime' ELSE 'async' END AS cls,
+                 COUNT(*) AS n
+          FROM `${GCP_PROJECT}.${BQ_DATASET_1}.fact_interaction` GROUP BY 1
+
+      # CROSS JOIN row preservation (3x3 = 9 both sides)
+      - id: cross_join_preservation
+        mode: scalar
+        tolerance: "0"
+        source_sql: "SELECT COUNT(*) AS n FROM ${SOURCE_DATABASE}.dim_agent a CROSS JOIN ${SOURCE_DATABASE}.dim_agent b"
+        target_sql: "SELECT COUNT(*) AS n FROM `${GCP_PROJECT}.${BQ_DATASET_1}.dim_agent` a CROSS JOIN `${GCP_PROJECT}.${BQ_DATASET_1}.dim_agent` b"

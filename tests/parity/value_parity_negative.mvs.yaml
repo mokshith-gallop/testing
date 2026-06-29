@@ -1,0 +1,39 @@
+# P0-4 NEGATIVE twin — aggregate sum + full-row fingerprint against the corrupt
+# target (invoice 5001 off by one cent). Harness must FAIL and localize the key.
+name: p0_4_negative
+description: aggregate + fingerprint vs corrupt target — harness must FAIL.
+
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+suites:
+  - pattern: aggregate_parity
+    id: agg-corrupt
+    source_database: "${SOURCE_DATABASE}"
+    target_dataset: "${BQ_DATASET_2}"
+    tables:
+      - source: ods_invoice_acid
+        target: ods_invoice_corrupt
+        aggregates:
+          - { column: amount, fn: sum, tolerance: "0" }   # off by 0.01 -> FAIL
+
+  - pattern: fingerprint_parity
+    id: fp-corrupt
+    source_database: "${SOURCE_DATABASE}"
+    target_dataset: "${BQ_DATASET_2}"
+    tables:
+      - source: ods_invoice_acid
+        target: ods_invoice_corrupt
+        key: invoice_id
+        columns: [invoice_id, amount]                     # row 5001 differs
+
+  - pattern: fingerprint_parity                           # scale path must also catch it
+    id: fp-corrupt-pushdown
+    source_database: "${SOURCE_DATABASE}"
+    target_dataset: "${BQ_DATASET_2}"
+    tables:
+      - source: ods_invoice_acid
+        target: ods_invoice_corrupt
+        columns: [invoice_id, amount]
+        scale: pushdown

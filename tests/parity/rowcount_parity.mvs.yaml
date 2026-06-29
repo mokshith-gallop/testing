@@ -1,0 +1,46 @@
+# P0-2 golden spec — bulk load (pattern 14) + row-count parity (pattern 1).
+# "data in, counts proven."
+name: p0_2_load_and_rowcount
+description: NBCS fixture — bulk-load per format, then prove legacy<->target counts.
+
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+suites:
+  # --- pattern 14: bulk load per format into scratch tables, assert landed counts ---
+  - pattern: bulk_load
+    id: load-formats
+    story_id: NBCS-EXTRACT-LOAD
+    target_dataset: "${BQ_DATASET_2}"
+    loads:
+      - { table: _load_fact_json, format: NEWLINE_DELIMITED_JSON, expected_count: 8,
+          uri: "gs://${SANDBOX_BUCKET}/p0-2/fact/json/*" }
+      - { table: _load_fact_csv, format: CSV, field_delimiter: "|", skip_leading_rows: 1,
+          expected_count: 8, uri: "gs://${SANDBOX_BUCKET}/p0-2/fact/csv/*" }
+      - { table: _load_fact_parquet, format: PARQUET, expected_count: 8,
+          uri: "gs://${SANDBOX_BUCKET}/p0-2/fact/parquet/*" }
+      - { table: _load_fact_hive, format: NEWLINE_DELIMITED_JSON, expected_count: 8,
+          uri: "gs://${SANDBOX_BUCKET}/p0-2/fact/hive/*",
+          hive_partitioning: { mode: AUTO,
+                               source_uri_prefix: "gs://${SANDBOX_BUCKET}/p0-2/fact/hive/",
+                               expect_partition_column: event_date } }
+
+  # --- pattern 1: row-count parity legacy(Impala) <-> BigQuery ---
+  - pattern: rowcount_parity
+    id: dm-rowcounts
+    story_id: NBCS-EXTRACT-LOAD
+    source_database: "${SOURCE_DATABASE}"
+    target_dataset: "${BQ_DATASET_1}"
+    tables:
+      - { source: dim_agent,        target: dim_agent,        tolerance: "0" }     # dim: exact
+      - { source: dim_customer,     target: dim_customer,     tolerance: "0" }     # dim: exact
+      - { source: fact_interaction, target: fact_interaction, tolerance: "0.1%" }  # fact: <=0.1%
+
+  - pattern: rowcount_parity
+    id: ods-rowcounts
+    story_id: NBCS-EXTRACT-LOAD
+    source_database: "${SOURCE_DATABASE}"
+    target_dataset: "${BQ_DATASET_1}"
+    tables:
+      - { source: ods_invoice_acid, target: ods_invoice, tolerance: "0" }

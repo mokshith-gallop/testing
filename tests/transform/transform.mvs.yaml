@@ -1,0 +1,57 @@
+# P0-5 golden spec — SCD-2 continuity (8) + MERGE idempotency (9) + FK orphan (10).
+name: p0_5_transform
+description: NBCS fixture — stateful-transform correctness.
+
+connections:
+  source: { engine: impala }
+  target: { engine: bigquery }
+
+suites:
+  - pattern: scd2_continuity
+    id: scd2-dim-customer
+    story_id: NBCS-TRANSFORM
+    target_dataset: "${BQ_DATASET_1}"
+    source_database: "${SOURCE_DATABASE}"
+    tables:
+      - target: dim_customer
+        source: dim_customer
+        entity_key: contact_id
+        eff_from: eff_from
+        eff_to: eff_to
+        current_flag: is_current
+        terminal_eff_to: "9999-12-31"
+        row_hash: row_hash
+        hash_columns: [contact_id, full_name, segment]
+
+  - pattern: merge_idempotency
+    id: merge-invoice
+    story_id: NBCS-TRANSFORM
+    target_dataset: "${BQ_DATASET_2}"
+    merges:
+      - target: mrg_target
+        key_columns: [invoice_id]
+        compare_columns: [invoice_id, contact_id, amount]
+        merge_sql: |
+          MERGE `${GCP_PROJECT}.${BQ_DATASET_2}.mrg_target` t
+          USING `${GCP_PROJECT}.${BQ_DATASET_2}.mrg_delta` d
+          ON t.invoice_id = d.invoice_id
+          WHEN MATCHED AND d.op = 'D' THEN DELETE
+          WHEN MATCHED THEN UPDATE SET amount = d.amount, contact_id = d.contact_id
+          WHEN NOT MATCHED AND d.op != 'D' THEN
+            INSERT (invoice_id, contact_id, amount) VALUES (d.invoice_id, d.contact_id, d.amount)
+        deleted_keys_absent:
+          delta_table: mrg_delta
+          op_column: op
+          delete_value: "D"
+
+  - pattern: fk_orphan
+    id: fk-fact-customer
+    story_id: NBCS-BACKFILL
+    source_database: "${SOURCE_DATABASE}"
+    target_dataset: "${BQ_DATASET_1}"
+    joins:
+      - child: fact_interaction
+        child_key: contact_id
+        parent: dim_customer
+        parent_key: contact_id
+        tolerance_pp: 0.05     # target orphan rate within 0.05pp of legacy
